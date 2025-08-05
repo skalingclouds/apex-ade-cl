@@ -4,6 +4,7 @@ import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
 import Upload from './pages/Upload'
 import DocumentReview from './pages/DocumentReview'
+import Analytics from './pages/Analytics'
 import NotFound from './pages/NotFound'
 
 function App() {
@@ -15,6 +16,7 @@ function App() {
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="upload" element={<Upload />} />
           <Route path="documents/:id" element={<DocumentReview />} />
+          <Route path="analytics" element={<Analytics />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>

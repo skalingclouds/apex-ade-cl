@@ -8,6 +8,7 @@ from app.schemas.chat import HighlightArea
 class ChatResponseData:
     response: str
     highlighted_areas: Optional[List[HighlightArea]] = None
+    fallback: bool = False
 
 class ChatService:
     """Service for processing chat queries about documents"""
@@ -19,6 +20,15 @@ class ChatService:
         query: str
     ) -> ChatResponseData:
         """Process a chat query and return response with highlights"""
+        
+        # Handle empty document text
+        if not document_text:
+            return ChatResponseData(
+                response="The document appears to be empty or has not been processed yet. "
+                        "Please ensure the document has been successfully extracted before using chat.",
+                highlighted_areas=[],
+                fallback=True
+            )
         
         # For MVP, we'll implement a simple keyword-based search
         # In production, this would use an LLM or more sophisticated NLP
@@ -34,7 +44,8 @@ class ChatService:
             return ChatResponseData(
                 response="I couldn't find specific information about that in the document. "
                         "Could you please rephrase your question or ask about something else?",
-                highlighted_areas=None
+                highlighted_areas=None,
+                fallback=True
             )
         
         # Generate response based on found sections
@@ -115,12 +126,15 @@ class ChatService:
                 line_number = position // chars_per_line
                 char_in_line = position % chars_per_line
                 
+                # Calculate bounding box [x1, y1, x2, y2]
+                x1 = char_in_line * char_width
+                y1 = line_number * line_height
+                x2 = x1 + len(section) * char_width
+                y2 = y1 + line_height
+                
                 highlights.append(HighlightArea(
                     page=0,  # Simplified - assume single page
-                    x=char_in_line * char_width,
-                    y=line_number * line_height,
-                    width=len(section) * char_width,
-                    height=line_height
+                    bbox=[x1, y1, x2, y2]
                 ))
         
         return highlights

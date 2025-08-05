@@ -1,5 +1,6 @@
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, BackgroundTasks
+from starlette.requests import Request
 from sqlalchemy.orm import Session
 import aiofiles
 import os
@@ -8,12 +9,16 @@ from datetime import datetime
 from app.core.database import get_db
 from app.core.config import settings
 from app.models.document import Document, DocumentStatus
-from app.schemas.document import DocumentResponse, DocumentListResponse, DocumentUpdate
+from app.schemas.document import DocumentResponse, DocumentListResponse, DocumentUpdate, RejectRequest, EscalateRequest
+from app.services.audit_service import AuditService
+from app.services.analytics_service import AnalyticsService
 
 router = APIRouter()
 
 @router.post("/upload", response_model=DocumentResponse)
 async def upload_document(
+    request: Request,
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
@@ -52,6 +57,21 @@ async def upload_document(
     db.add(db_document)
     db.commit()
     db.refresh(db_document)
+    
+    # Audit log the upload
+    audit_service = AuditService(db, request)
+    audit_service.log_document_access(
+        document_id=db_document.id,
+        action="upload"
+    )
+    
+    # Analytics event logging (non-blocking)
+    analytics_service = AnalyticsService(db, request, background_tasks)
+    analytics_service.log_document_upload(
+        document_id=db_document.id,
+        filename=file.filename,
+        file_size=file.size
+    )
     
     return db_document
 
@@ -110,6 +130,7 @@ def update_document(
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_document(
+    request: Request,
     document_id: int,
     db: Session = Depends(get_db)
 ):
@@ -121,6 +142,20 @@ def delete_document(
             detail="Document not found"
         )
     
+    # Prepare document data for audit logging before deletion
+    document_data = {
+        "filename": document.filename,
+        "uploaded_at": document.uploaded_at.isoformat() if document.uploaded_at else None,
+        "status": document.status.value if document.status else None
+    }
+    
+    # Audit log the deletion for GDPR compliance
+    audit_service = AuditService(db, request)
+    audit_service.log_deletion(
+        document_id=document_id,
+        document_data=document_data
+    )
+    
     # Delete file from filesystem
     if os.path.exists(document.filepath):
         os.remove(document.filepath)
@@ -131,6 +166,8 @@ def delete_document(
 
 @router.post("/{document_id}/approve", response_model=DocumentResponse)
 def approve_document(
+    request: Request,
+    background_tasks: BackgroundTasks,
     document_id: int,
     db: Session = Depends(get_db)
 ):
@@ -148,15 +185,35 @@ def approve_document(
             detail="Document must be in 'extracted' status to approve"
         )
     
+    old_status = document.status
     document.status = DocumentStatus.APPROVED
     db.commit()
+    
+    # Audit log
+    audit_service = AuditService(db, request)
+    audit_service.log_status_change(
+        document_id=document_id,
+        old_status=old_status,
+        new_status=DocumentStatus.APPROVED
+    )
+    
+    # Analytics event logging
+    analytics_service = AnalyticsService(db, request, background_tasks)
+    analytics_service.log_document_status_change(
+        document_id=document_id,
+        old_status=old_status.value,
+        new_status=DocumentStatus.APPROVED.value
+    )
+    
     db.refresh(document)
     return document
 
 @router.post("/{document_id}/reject", response_model=DocumentResponse)
 def reject_document(
+    request: Request,
+    background_tasks: BackgroundTasks,
     document_id: int,
-    reason: str = None,
+    reject_request: RejectRequest,
     db: Session = Depends(get_db)
 ):
     """Reject a document's extraction results"""
@@ -167,17 +224,39 @@ def reject_document(
             detail="Document not found"
         )
     
+    old_status = document.status
     document.status = DocumentStatus.REJECTED
-    if reason:
-        document.error_message = reason
+    if reject_request.reason:
+        document.error_message = reject_request.reason
     db.commit()
+    
+    # Audit log
+    audit_service = AuditService(db, request)
+    audit_service.log_status_change(
+        document_id=document_id,
+        old_status=old_status,
+        new_status=DocumentStatus.REJECTED,
+        reason=reject_request.reason
+    )
+    
+    # Analytics event logging
+    analytics_service = AnalyticsService(db, request, background_tasks)
+    analytics_service.log_document_status_change(
+        document_id=document_id,
+        old_status=old_status.value,
+        new_status=DocumentStatus.REJECTED.value,
+        reason=reject_request.reason
+    )
+    
     db.refresh(document)
     return document
 
 @router.post("/{document_id}/escalate", response_model=DocumentResponse)
 def escalate_document(
+    request: Request,
+    background_tasks: BackgroundTasks,
     document_id: int,
-    reason: str = None,
+    escalate_request: EscalateRequest,
     db: Session = Depends(get_db)
 ):
     """Escalate a document for further review"""
@@ -188,9 +267,29 @@ def escalate_document(
             detail="Document not found"
         )
     
+    old_status = document.status
     document.status = DocumentStatus.ESCALATED
-    if reason:
-        document.error_message = reason
+    if escalate_request.reason:
+        document.error_message = escalate_request.reason
     db.commit()
+    
+    # Audit log
+    audit_service = AuditService(db, request)
+    audit_service.log_status_change(
+        document_id=document_id,
+        old_status=old_status,
+        new_status=DocumentStatus.ESCALATED,
+        reason=escalate_request.reason
+    )
+    
+    # Analytics event logging
+    analytics_service = AnalyticsService(db, request, background_tasks)
+    analytics_service.log_document_status_change(
+        document_id=document_id,
+        old_status=old_status.value,
+        new_status=DocumentStatus.ESCALATED.value,
+        reason=escalate_request.reason
+    )
+    
     db.refresh(document)
     return document

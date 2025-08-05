@@ -17,6 +17,16 @@ api.interceptors.response.use(
       // Handle unauthorized
       window.location.href = '/login'
     }
+    
+    // Extract error information from custom error response
+    if (error.response?.data?.error) {
+      const customError = new Error(error.response.data.error.message || error.message)
+      customError['errorInfo'] = error.response.data.error
+      customError['retryAllowed'] = error.response.data.retry_allowed
+      customError['escalationAvailable'] = error.response.data.escalation_available
+      return Promise.reject(customError)
+    }
+    
     return Promise.reject(error)
   }
 )
@@ -174,6 +184,11 @@ export const getDocumentMarkdown = async (id: number): Promise<{ markdown: strin
 }
 
 // Helper function to calculate stats
+export const retryExtraction = async (id: number): Promise<ExtractionResponse> => {
+  const response = await api.post(`/documents/${id}/retry`)
+  return response.data
+}
+
 export const getDocumentStats = async (): Promise<DocumentStats> => {
   const response = await getDocuments()
   const documents = response.documents

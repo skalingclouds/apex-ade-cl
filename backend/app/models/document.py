@@ -1,19 +1,20 @@
 from sqlalchemy import Column, Integer, String, Text, DateTime, Enum
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import enum
 
 from app.core.database import Base
 
 class DocumentStatus(str, enum.Enum):
-    PENDING = "pending"
-    PARSING = "parsing"
-    PARSED = "parsed"
-    EXTRACTING = "extracting"
-    EXTRACTED = "extracted"
-    APPROVED = "approved"
-    REJECTED = "rejected"
-    ESCALATED = "escalated"
-    FAILED = "failed"
+    PENDING = "PENDING"
+    PARSING = "PARSING"
+    PARSED = "PARSED"
+    EXTRACTING = "EXTRACTING"
+    EXTRACTED = "EXTRACTED"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    ESCALATED = "ESCALATED"
+    FAILED = "FAILED"
 
 class Document(Base):
     __tablename__ = "documents"
@@ -28,3 +29,8 @@ class Document(Base):
     uploaded_at = Column(DateTime(timezone=True), server_default=func.now())
     processed_at = Column(DateTime(timezone=True), nullable=True)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    # Relationships
+    extraction_schemas = relationship("ExtractionSchema", back_populates="document", cascade="all, delete-orphan")
+    chat_logs = relationship("ChatLog", back_populates="document", cascade="all, delete-orphan")
+    audit_logs = relationship("AuditLog", back_populates="document", cascade="all, delete-orphan")

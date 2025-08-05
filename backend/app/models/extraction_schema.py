@@ -14,4 +14,4 @@ class ExtractionSchema(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     # Relationships
-    document = relationship("Document", backref="extraction_schemas")
+    document = relationship("Document", back_populates="extraction_schemas")

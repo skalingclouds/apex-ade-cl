@@ -114,43 +114,106 @@ class LandingAIService:
                     for field in selected_fields
                 }
                 
+                # Validate extracted data against schema
+                try:
+                    validated_data = schema_model(**filtered_data)
+                    validated_dict = validated_data.model_dump()
+                except Exception as validation_error:
+                    # If validation fails, still return the data but log the error
+                    import logging
+                    logging.warning(f"Validation error: {validation_error}")
+                    validated_dict = filtered_data
+                
                 return ExtractionResult(
-                    data=filtered_data,
+                    data=validated_dict,
                     markdown=parsed_doc.markdown,
                     processed_at=datetime.now()
                 )
         
-        raise Exception("Failed to extract document data")
+        raise Exception("Failed to extract document data - no extraction results found")
     
     def _analyze_chunks_for_fields(self, chunks: List[Any]) -> List[FieldInfo]:
         """Analyze document chunks to determine available fields"""
-        # This is a simplified version - in reality, you'd have more sophisticated logic
         fields = []
+        seen_fields = set()
         
-        # Common fields based on chunk types
+        # Analyze chunk types and content
         chunk_types = set()
+        has_forms = False
+        has_numbers = False
+        
         for chunk in chunks:
             if hasattr(chunk, 'chunk_type') and chunk.chunk_type:
                 chunk_types.add(chunk.chunk_type.value)
+            
+            # Check for form-like content
+            if hasattr(chunk, 'text'):
+                text = chunk.text.lower()
+                if any(keyword in text for keyword in ['name:', 'date:', 'address:', 'phone:', 'email:']):
+                    has_forms = True
+                if any(char.isdigit() for char in text):
+                    has_numbers = True
         
-        # Suggest fields based on chunk types
+        # Document structure fields
+        if 'title' in chunk_types or any(hasattr(c, 'text') and len(c.text) < 100 for c in chunks[:3]):
+            fields.append(FieldInfo(name="title", type="string", description="Document title"))
+            seen_fields.add("title")
+        
+        # Table data fields
         if 'table' in chunk_types:
             fields.extend([
-                FieldInfo(name="table_data", type="array", description="Tabular data from document"),
+                FieldInfo(name="table_data", type="array", description="Extracted table data"),
+                FieldInfo(name="table_headers", type="array", description="Table column headers", required=False),
             ])
+            seen_fields.update(["table_data", "table_headers"])
         
-        if 'text' in chunk_types:
+        # Text content fields
+        if 'text' in chunk_types or 'paragraph' in chunk_types:
             fields.extend([
-                FieldInfo(name="full_text", type="string", description="Full text content"),
-                FieldInfo(name="summary", type="string", description="Document summary"),
+                FieldInfo(name="content", type="string", description="Main document content"),
+                FieldInfo(name="summary", type="string", description="Document summary", required=False),
             ])
+            seen_fields.update(["content", "summary"])
         
-        # Add some common fields
-        fields.extend([
-            FieldInfo(name="title", type="string", description="Document title"),
+        # Form fields
+        if has_forms:
+            form_fields = [
+                FieldInfo(name="name", type="string", description="Name field", required=False),
+                FieldInfo(name="date", type="date", description="Date field", required=False),
+                FieldInfo(name="address", type="string", description="Address field", required=False),
+                FieldInfo(name="phone", type="string", description="Phone number", required=False),
+                FieldInfo(name="email", type="string", description="Email address", required=False),
+            ]
+            for field in form_fields:
+                if field.name not in seen_fields:
+                    fields.append(field)
+                    seen_fields.add(field.name)
+        
+        # Numeric fields
+        if has_numbers:
+            numeric_fields = [
+                FieldInfo(name="amount", type="number", description="Monetary amount", required=False),
+                FieldInfo(name="quantity", type="integer", description="Quantity or count", required=False),
+                FieldInfo(name="total", type="number", description="Total value", required=False),
+            ]
+            for field in numeric_fields:
+                if field.name not in seen_fields:
+                    fields.append(field)
+                    seen_fields.add(field.name)
+        
+        # Common metadata fields
+        metadata_fields = [
             FieldInfo(name="author", type="string", description="Document author", required=False),
-            FieldInfo(name="date", type="string", description="Document date", required=False),
+            FieldInfo(name="created_date", type="date", description="Creation date", required=False),
+            FieldInfo(name="page_count", type="integer", description="Number of pages", required=False),
+            FieldInfo(name="language", type="string", description="Document language", required=False),
+            FieldInfo(name="category", type="string", description="Document category", required=False),
             FieldInfo(name="metadata", type="object", description="Additional metadata", required=False),
-        ])
+        ]
+        
+        for field in metadata_fields:
+            if field.name not in seen_fields:
+                fields.append(field)
+                seen_fields.add(field.name)
         
         return fields
