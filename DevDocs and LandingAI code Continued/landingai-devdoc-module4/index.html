@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project APEX SDK: Module 4 - Getting Results</title>
+    <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-gray-900 text-gray-300 font-sans antialiased">
+
+    <div class="min-h-screen flex flex-col items-center justify-center p-4 sm:p-6 lg:p-8">
+        <main class="w-full max-w-4xl mx-auto">
+            <header class="mb-8 text-center">
+                <h1 class="text-3xl sm:text-4xl font-bold text-white tracking-tight">
+                    Project APEX SDK: Module 4
+                </h1>
+                <p class="mt-2 text-lg text-gray-400">Getting Results</p>
+            </header>
+
+            <div class="bg-gray-800/50 backdrop-blur-sm rounded-xl shadow-2xl ring-1 ring-white/10">
+                <div class="p-6 sm:p-8">
+                    <h2 class="text-xl font-semibold text-white mb-3">Module Overview</h2>
+                    <p class="text-gray-400 leading-relaxed">
+                        The `results.py` module is responsible for the final stage of the workflow: retrieving and handling the output from a document extraction job. It provides functions to poll for job completion and then fetch the final, structured data. This module demonstrates how to access both the populated Pydantic model and rich metadata, such as confidence scores and the visual location (bounding box) of each extracted field.
+                    </p>
+                </div>
+
+                <div class="px-6 sm:px-8 pb-8">
+                    <div class="bg-gray-900 rounded-lg shadow-lg overflow-hidden ring-1 ring-white/10">
+                        <div class="flex items-center justify-between bg-gray-800 px-4 py-2 border-b border-gray-700">
+                             <span class="text-sm text-gray-200 font-mono">results.py</span>
+                             <span class="text-xs text-gray-500">Core Module</span>
+                        </div>
+                        <pre><code class="language-python">
+"""
+Module: results.py
+Description: This module provides functions to retrieve and process the results
+             of a document extraction job from the Project APEX SDK.
+"""
+import time
+from typing import Dict, Generic, Type, TypeVar
+from pydantic import BaseModel, Field
+
+# --- Placeholder SDK and Schema Classes ---
+# In a real scenario, these would be imported from other SDK modules.
+
+class Client:
+    """Placeholder for the client from config.py."""
+    def __init__(self, api_key: str):
+        self.api_key = api_key
+
+class BoundingBox(BaseModel):
+    """Represents the coordinates of a bounding box on a document page."""
+    x_min: float
+    y_min: float
+    x_max: float
+    y_max: float
+    page_num: int
+
+class FieldMetadata(BaseModel):
+    """Contains metadata for a single extracted field."""
+    confidence_score: float
+    bounding_box: BoundingBox
+
+# Use a TypeVar for generic result handling
+T = TypeVar("T", bound=BaseModel)
+
+class ExtractionResult(BaseModel, Generic[T]):
+    """
+    Holds the final, structured result of an extraction job, including metadata.
+    """
+    structured_data: T
+    # The dictionary keys match the field names in the Pydantic schema
+    metadata: Dict[str, FieldMetadata]
+
+class ExtractionJob:
+    """Represents an extraction job and its status."""
+    def __init__(self, job_id: str, status: str = "processing"):
+        self.id = job_id
+        self.status = status
+        self._refresh_count = 0
+
+    def refresh(self) -> None:
+        """Simulates refreshing the job status from the API."""
+        print(f"Refreshing status for job '{self.id}'...")
+        # Simulate the job taking a few steps to complete.
+        if self._refresh_count < 2:
+            self.status = "processing"
+        else:
+            self.status = "completed"
+        self._refresh_count += 1
+        
+# This schema would typically be imported from schemas.py
+class InvoiceSchema(BaseModel):
+    """A placeholder for the schema defined in schemas.py."""
+    invoice_id: str = Field(..., description="The unique identifier for the invoice.")
+    total_amount: float = Field(..., description="The total amount due.")
+
+
+# --- Core Functions ---
+
+def wait_for_job_completion(client: Client, job: ExtractionJob, poll_interval: int = 1) -> None:
+    """
+    Polls the status of an extraction job until it is complete.
+
+    Args:
+        client (Client): The initialized LandingAI client.
+        job (ExtractionJob): The job object to monitor.
+        poll_interval (int): Seconds to wait between status checks.
+    """
+    print(f"\\n--- Monitoring Job: {job.id} ---")
+    while job.status not in ["completed", "failed"]:
+        job.refresh()
+        print(f"-> Job status: {job.status}")
+        if job.status == "completed":
+            print("✔ Job completed successfully.")
+            break
+        if job.status == "failed":
+            print("❌ Job failed.")
+            break
+        time.sleep(poll_interval)
+
+def get_extraction_results(
+    client: Client,
+    job_id: str,
+    schema_class: Type[T]
+) -> ExtractionResult[T]:
+    """
+    Retrieves the final results for a completed extraction job.
+
+    Args:
+        client (Client): The initialized LandingAI client.
+        job_id (str): The ID of the completed job.
+        schema_class (Type[T]): The Pydantic model class used for extraction.
+
+    Returns:
+        ExtractionResult[T]: An object containing the populated Pydantic model
+                             and associated metadata.
+    """
+    print(f"\\nFetching results for job '{job_id}'...")
+    # Simulate an API response for a completed job.
+    simulated_data = {"invoice_id": "INV-2024-08-04", "total_amount": 450.00}
+    validated_data = schema_class(**simulated_data)
+
+    simulated_metadata = {
+        "invoice_id": FieldMetadata(
+            confidence_score=0.98,
+            bounding_box=BoundingBox(x_min=50, y_min=25, x_max=150, y_max=40, page_num=0)
+        ),
+        "total_amount": FieldMetadata(
+            confidence_score=0.99,
+            bounding_box=BoundingBox(x_min=400, y_min=600, x_max=550, y_max=620, page_num=0)
+        )
+    }
+    result = ExtractionResult[schema_class](
+        structured_data=validated_data,
+        metadata=simulated_metadata
+    )
+    print("✔ Results retrieved and parsed.")
+    return result
+
+# --- Main Execution Block ---
+if __name__ == "__main__":
+    print("--- Result Retrieval Workflow ---")
+    demo_client = Client(api_key="DUMMY_API_KEY")
+    
+    # Assume we have a job ID from a previous step (e.g., from processing.py)
+    extraction_job = ExtractionJob(job_id="job_1a2b3c4d5e6f")
+
+    # 1. Wait for the job to finish processing
+    wait_for_job_completion(client=demo_client, job=extraction_job)
+
+    # 2. Retrieve the results once the job is complete
+    if extraction_job.status == "completed":
+        results = get_extraction_results(
+            client=demo_client,
+            job_id=extraction_job.id,
+            schema_class=InvoiceSchema
+        )
+
+        # 3. Access the structured data (Pydantic model)
+        print("\\n--- Extracted Data (Pydantic Model) ---")
+        invoice_data = results.structured_data
+        print(f"  Invoice ID: {invoice_data.invoice_id}")
+        print(f"  Total Amount: ${invoice_data.total_amount:.2f}")
+
+        # 4. Access metadata (confidence and bounding box)
+        print("\\n--- Field-Level Metadata ---")
+        total_amount_metadata = results.metadata.get("total_amount")
+        if total_amount_metadata:
+            print(f"  Field: 'total_amount'")
+            confidence = total_amount_metadata.confidence_score
+            bbox = total_amount_metadata.bounding_box
+            print(f"    Confidence: {confidence:.2%}")
+            print(f"    Location (BBox on page {bbox.page_num}): {bbox.dict()}")
+
+    print("\\n--- Workflow Complete ---")
+</code></pre>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

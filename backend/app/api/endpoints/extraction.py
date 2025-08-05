@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, status
 from starlette.requests import Request
 from sqlalchemy.orm import Session
 import json
-from typing import Dict, Any
-from pydantic import create_model
+from typing import Dict, Any, Optional
+from pydantic import create_model, Field
 import logging
 
 from app.core.database import get_db
@@ -11,6 +11,7 @@ from app.models.document import Document, DocumentStatus
 from app.models.extraction_schema import ExtractionSchema
 from app.schemas.extraction import ParseResponse, ExtractionRequest, ExtractionResponse, FieldInfo
 from app.services.landing_ai_service import LandingAIService
+from app.services.simple_landing_ai_service import SimpleLandingAIService
 from app.services.audit_service import AuditService
 from app.services.analytics_service import AnalyticsService
 from app.core.error_handlers import (
@@ -30,6 +31,10 @@ async def parse_document(
     db: Session = Depends(get_db)
 ):
     """Parse document to identify extractable fields"""
+    # Debug schema loading
+    logger.info(f"ParseResponse schema fields: {ParseResponse.__fields__}")
+    logger.info(f"ParseResponse schema: {ParseResponse.schema()}")
+    
     document = db.query(Document).filter(Document.id == document_id).first()
     if not document:
         raise DocumentNotFoundError(document_id)
@@ -45,13 +50,16 @@ async def parse_document(
     db.commit()
     
     try:
-        # Parse document using landing.ai SDK
-        service = LandingAIService()
+        # Parse document using simplified landing.ai SDK service
+        service = SimpleLandingAIService()
         parse_result = await service.parse_document(document.filepath)
         
-        # Update status
+        # Update status and save markdown if available
         old_status = document.status
         document.status = DocumentStatus.PARSED
+        # Save markdown from parse result
+        if parse_result.markdown:
+            document.extracted_md = parse_result.markdown
         db.commit()
         
         # Analytics event logging
@@ -106,57 +114,39 @@ async def extract_document_data(
     db.commit()
     
     # Create dynamic Pydantic model based on selected fields
-    # First, get the field info from the parse response to know the types
-    try:
-        parse_result = await LandingAIService().parse_document(document.filepath)
-        field_info_map = {field.name: field for field in parse_result.fields}
-    except Exception as e:
-        document.status = DocumentStatus.FAILED
-        document.error_message = f"Failed to get field info: {str(e)}"
-        db.commit()
-        return ExtractionResponse(
-            success=False,
-            error=f"Failed to get field info: {str(e)}"
-        )
-    
-    # Map field types to Python types
-    type_mapping = {
-        'string': str,
-        'number': float,
-        'integer': int,
-        'boolean': bool,
-        'array': list,
-        'object': dict,
-        'date': str,  # Will be validated as date string
-    }
+    # Since Landing.AI will try to extract whatever it can, make all fields optional strings
+    from typing import Optional
+    from pydantic import Field
     
     field_definitions = {}
     for field_name in extraction_request.selected_fields:
-        field_info = field_info_map.get(field_name)
-        if field_info:
-            field_type = type_mapping.get(field_info.type, str)
-            if field_info.required:
-                field_definitions[field_name] = (field_type, ...)
-            else:
-                field_definitions[field_name] = (field_type, None)
-        else:
-            # Default to optional string if field info not found
-            field_definitions[field_name] = (str, None)
+        # All fields are optional strings for flexibility
+        field_definitions[field_name] = (Optional[str], Field(None, description=f"Field: {field_name}"))
     
     DynamicModel = create_model('DynamicExtractionModel', **field_definitions)
     
     # Save extraction schema
+    # Convert field_definitions to JSON-serializable format
+    schema_dict = {}
+    for field_name, (field_type, default) in field_definitions.items():
+        # Handle Optional types which don't have __name__
+        type_name = "string"  # Default to string since we're using Optional[str]
+        schema_dict[field_name] = {
+            'type': type_name,
+            'required': False  # All fields are optional
+        }
+    
     schema_entry = ExtractionSchema(
         document_id=document_id,
-        schema_json=json.dumps(field_definitions),
+        schema_json=json.dumps(schema_dict),
         selected_fields=json.dumps(extraction_request.selected_fields)
     )
     db.add(schema_entry)
     db.commit()
     
     try:
-        # Extract data using landing.ai SDK
-        service = LandingAIService()
+        # Extract data using simplified landing.ai SDK service
+        service = SimpleLandingAIService()
         extraction_result = await service.extract_document(
             document.filepath,
             DynamicModel,

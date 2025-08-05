@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project APEX SDK: Module 2 - Document Processing</title>
+    <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-gray-900 text-gray-300 font-sans antialiased">
+
+    <div class="min-h-screen flex flex-col items-center justify-center p-4 sm:p-6 lg:p-8">
+        <main class="w-full max-w-4xl mx-auto">
+            <header class="mb-8 text-center">
+                <h1 class="text-3xl sm:text-4xl font-bold text-white tracking-tight">
+                    Project APEX SDK: Module 2
+                </h1>
+                <p class="mt-2 text-lg text-gray-400">Document Processing</p>
+            </header>
+
+            <div class="bg-gray-800/50 backdrop-blur-sm rounded-xl shadow-2xl ring-1 ring-white/10">
+                <div class="p-6 sm:p-8">
+                    <h2 class="text-xl font-semibold text-white mb-3">Module Overview</h2>
+                    <p class="text-gray-400 leading-relaxed">
+                        The `processing.py` module contains the core functions for interacting with the LandingAI platform. It handles the essential tasks of uploading documents for analysis and initiating data extraction jobs against predefined schemas. This module builds upon the configured client from `config.py` to execute these operations.
+                    </p>
+                </div>
+
+                <div class="px-6 sm:px-8 pb-8">
+                    <div class="bg-gray-900 rounded-lg shadow-lg overflow-hidden ring-1 ring-white/10">
+                        <div class="flex items-center justify-between bg-gray-800 px-4 py-2 border-b border-gray-700">
+                             <span class="text-sm text-gray-200 font-mono">processing.py</span>
+                             <span class="text-xs text-gray-500">Core Module</span>
+                        </div>
+                        <pre><code class="language-python">
+"""
+Module: processing.py
+Description: This module provides core functions for document processing
+             using the Project APEX SDK, including uploading documents and
+             initiating extraction jobs.
+"""
+import os
+from typing import Any, Dict
+
+# --- Placeholder SDK Classes ---
+# In a real scenario, these would be imported from agentic_doc and config
+# from config import Client
+
+class Client:
+    """Placeholder for the client from config.py."""
+    def __init__(self, api_key: str):
+        self.api_key = api_key
+
+    def __repr__(self):
+        return f"Client(api_key='...')"
+
+class UploadedDocument:
+    """Represents a document successfully uploaded to the platform."""
+    def __init__(self, doc_id: str, file_name: str):
+        self.id = doc_id
+        self.file_name = file_name
+
+    def __repr__(self):
+        return f"UploadedDocument(id='{self.id}', file_name='{self.file_name}')"
+
+class ExtractionJob:
+    """Represents an extraction job initiated on the platform."""
+    def __init__(self, job_id: str, doc_id: str, status: str):
+        self.id = job_id
+        self.doc_id = doc_id
+        self.status = status
+
+    def __repr__(self):
+        return f"ExtractionJob(id='{self.id}', status='{self.status}')"
+# --- End Placeholder SDK Classes ---
+
+
+def upload_document(client: Client, file_path: str) -> UploadedDocument:
+    """
+    Uploads a local document to the LandingAI platform.
+
+    Args:
+        client (Client): The initialized LandingAI client.
+        file_path (str): The local path to the document file.
+
+    Returns:
+        UploadedDocument: An object representing the uploaded document,
+                          containing its unique ID.
+
+    Raises:
+        FileNotFoundError: If the document does not exist at the given path.
+    """
+    print(f"Attempting to upload '{file_path}'...")
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"No such file or directory: '{file_path}'")
+
+    # In a real SDK, this would be a network call.
+    # We'll simulate it and return a placeholder object.
+    file_name = os.path.basename(file_path)
+    # Simulate a unique ID from the platform.
+    simulated_doc_id = f"doc_{os.urandom(8).hex()}"
+
+    uploaded_doc = UploadedDocument(doc_id=simulated_doc_id, file_name=file_name)
+    print(f"✔ Document '{file_name}' uploaded successfully. ID: {uploaded_doc.id}")
+    return uploaded_doc
+
+
+def start_extraction(client: Client, doc_id: str, schema_id: str) -> ExtractionJob:
+    """
+    Initiates an extraction job for an uploaded document.
+
+    Args:
+        client (Client): The initialized LandingAI client.
+        doc_id (str): The unique ID of the uploaded document.
+        schema_id (str): The ID of the schema to use for extraction.
+
+    Returns:
+        ExtractionJob: An object representing the initiated job,
+                       containing its job ID and status.
+    """
+    print(f"Starting extraction for document '{doc_id}' with schema '{schema_id}'...")
+    # Simulate an API call to start the job.
+    simulated_job_id = f"job_{os.urandom(8).hex()}"
+    job = ExtractionJob(
+        job_id=simulated_job_id,
+        doc_id=doc_id,
+        status="processing"
+    )
+    print(f"✔ Extraction job started successfully. Job ID: {job.id}")
+    return job
+
+
+# --- Main Execution Block ---
+if __name__ == "__main__":
+    # 1. Setup - Create a dummy client and a fake document file for demonstration.
+    demo_client = Client(api_key="DUMMY_API_KEY")
+    
+    # Create a dummy file to "upload"
+    DUMMY_FILE = "invoice_sample.pdf"
+    if not os.path.exists(DUMMY_FILE):
+        with open(DUMMY_FILE, "w") as f:
+            f.write("This is a sample invoice PDF content.")
+    
+    # The schema ID for the 'Invoices' extractor in LandingAI.
+    INVOICE_SCHEMA_ID = "a1b2c3d4-e5f6-7890-1234-567890abcdef"
+
+    print("--- Document Processing Workflow ---")
+    try:
+        # 2. Upload the document
+        uploaded_document = upload_document(
+            client=demo_client,
+            file_path=DUMMY_FILE
+        )
+        print(f"-> Result: {uploaded_document}\\n")
+
+        # 3. Start the extraction job using the ID from the uploaded document
+        extraction_job = start_extraction(
+            client=demo_client,
+            doc_id=uploaded_document.id,
+            schema_id=INVOICE_SCHEMA_ID,
+        )
+        print(f"-> Result: {extraction_job}")
+
+    except FileNotFoundError as e:
+        print(f"❌ Processing Error: {e}")
+    finally:
+        # 4. Cleanup the dummy file
+        if os.path.exists(DUMMY_FILE):
+            os.remove(DUMMY_FILE)
+        print("\\n--- Workflow Complete ---")
+</code></pre>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

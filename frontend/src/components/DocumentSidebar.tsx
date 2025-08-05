@@ -139,19 +139,19 @@ export default function DocumentSidebar({ isOpen, onToggle }: DocumentSidebarPro
                 <div>
                   <span className="text-gray-400">Approved:</span>
                   <span className="ml-2 font-medium text-green-400">
-                    {data.documents.filter(d => d.status === 'approved').length}
+                    {data.documents.filter(d => d.status === 'APPROVED').length}
                   </span>
                 </div>
                 <div>
                   <span className="text-gray-400">Rejected:</span>
                   <span className="ml-2 font-medium text-red-400">
-                    {data.documents.filter(d => d.status === 'rejected').length}
+                    {data.documents.filter(d => d.status === 'REJECTED').length}
                   </span>
                 </div>
                 <div>
                   <span className="text-gray-400">Failed:</span>
                   <span className="ml-2 font-medium text-red-600">
-                    {data.documents.filter(d => d.status === 'failed').length}
+                    {data.documents.filter(d => d.status === 'FAILED').length}
                   </span>
                 </div>
               </div>

@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project APEX SDK: Module 1 - Configuration and Client Initialization</title>
+    <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-gray-900 text-gray-300 font-sans antialiased">
+
+    <div class="min-h-screen flex flex-col items-center justify-center p-4 sm:p-6 lg:p-8">
+        <main class="w-full max-w-4xl mx-auto">
+            <header class="mb-8 text-center">
+                <h1 class="text-3xl sm:text-4xl font-bold text-white tracking-tight">
+                    Project APEX SDK: Module 1
+                </h1>
+                <p class="mt-2 text-lg text-gray-400">Configuration and Client Initialization</p>
+            </header>
+
+            <div class="bg-gray-800/50 backdrop-blur-sm rounded-xl shadow-2xl ring-1 ring-white/10">
+                <div class="p-6 sm:p-8">
+                    <h2 class="text-xl font-semibold text-white mb-3">Module Overview</h2>
+                    <p class="text-gray-400 leading-relaxed">
+                        The `config.py` module serves as the foundational layer for the SDK. Its primary responsibility is to manage all configuration, starting with the secure loading of the API key from the environment. This ensures a clean separation between sensitive credentials and application logic, providing a robust and secure entry point for initializing the SDK client.
+                    </p>
+                </div>
+
+                <div class="px-6 sm:px-8 pb-8">
+                    <div class="bg-gray-900 rounded-lg shadow-lg overflow-hidden ring-1 ring-white/10">
+                        <div class="flex items-center justify-between bg-gray-800 px-4 py-2 border-b border-gray-700">
+                             <span class="text-sm text-gray-200 font-mono">config.py</span>
+                             <span class="text-xs text-gray-500">Core Module</span>
+                        </div>
+                        <pre><code class="language-python">
+"""
+Module: config.py
+Description: This module handles the configuration for the Project APEX SDK,
+             focusing on securely loading credentials and initializing the
+             LandingAI agentic-doc client.
+"""
+
+import os
+from typing import Type
+
+# In a real scenario, the 'Client' class would be imported from the SDK.
+# from agentic_doc import Client
+# For demonstration, we'll define a placeholder class.
+class Client:
+    def __init__(self, api_key: str):
+        if not api_key:
+            raise ValueError("API key cannot be empty.")
+        self.api_key = api_key
+        print("✔ LandingAI client initialized successfully.")
+
+    def __repr__(self):
+        return f"Client(api_key='{self.api_key[:4]}...{self.api_key[-4:]}')"
+
+
+def load_api_key(env_variable: str = "VISION_AGENT_API_KEY") -> str:
+    """
+    Loads the LandingAI API key from an environment variable.
+
+    Args:
+        env_variable (str): The name of the environment variable.
+                            Defaults to "VISION_AGENT_API_KEY".
+
+    Returns:
+        str: The loaded API key.
+
+    Raises:
+        ValueError: If the environment variable is not set.
+    """
+    api_key = os.getenv(env_variable)
+    if not api_key:
+        raise ValueError(
+            f"'{env_variable}' environment variable not set. "
+            "Please set it to your LandingAI API key."
+        )
+    print("✔ API key loaded successfully.")
+    return api_key
+
+
+# --- Main Execution Block ---
+# This block demonstrates the usage of the functions in this module.
+if __name__ == "__main__":
+    print("Attempting to load credentials and initialize client...")
+    
+    # For demonstration, we set the environment variable here.
+    # In a real application, this would be set in your shell or deployment environment.
+    os.environ["VISION_AGENT_API_KEY"] = "MmhtN2t2enA1bHM1aWRhdnU5emVsOmljRlc4Zzd..."
+
+    try:
+        # 1. Load the API key from the environment
+        landingai_api_key = load_api_key()
+
+        # 2. Initialize the agentic-doc client
+        # The client is the primary interface for interacting with the LandingAI API.
+        client = Client(api_key=landingai_api_key)
+        
+        print("\n--- Configuration Summary ---")
+        print(f"Client object: {client}")
+        print("---------------------------")
+
+
+    except ValueError as e:
+        print(f"\n❌ Configuration Error: {e}")
+
+</code></pre>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

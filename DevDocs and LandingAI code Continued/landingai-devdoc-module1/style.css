@@ -1,0 +1,20 @@
+body {
+    font-family: 'Inter', sans-serif;
+}
+
+/* Use a monospaced font for code */
+pre code.hljs, .font-mono {
+    font-family: 'JetBrains Mono', monospace;
+}
+
+/* Custom styles for the code block to ensure consistency with the theme */
+pre code.hljs {
+    padding: 1.5rem;
+    font-size: 0.9rem;
+    line-height: 1.6;
+}
+
+/* Remove default padding from <pre> so code's padding is the only one */
+pre {
+    margin: 0;
+}

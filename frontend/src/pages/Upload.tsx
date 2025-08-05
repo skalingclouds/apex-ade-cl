@@ -6,7 +6,9 @@ import { Upload as UploadIcon, File, X, CheckCircle, AlertCircle } from 'lucide-
 import toast from 'react-hot-toast'
 import { uploadDocument } from '../services/api'
 
-interface FileWithStatus extends File {
+interface FileWithStatus {
+  originalFile: File  // The actual File object from react-dropzone
+  id: string          // Unique ID for React keys and internal tracking
   status: 'pending' | 'uploading' | 'success' | 'error'
   progress: number
   error?: string
@@ -18,25 +20,32 @@ export default function Upload() {
   const navigate = useNavigate()
 
   const uploadMutation = useMutation(uploadDocument, {
-    onSuccess: (data, file) => {
+    onSuccess: (data, variables) => {
       setFiles((prev) =>
         prev.map((f) =>
-          f.name === file.name ? { ...f, status: 'success' as const, progress: 100 } : f
+          f.id === variables.id ? { ...f, status: 'success' as const, progress: 100 } : f
         )
       )
       queryClient.invalidateQueries('documents')
-      toast.success(`${file.name} uploaded successfully`)
+      toast.success(`${variables.file.name} uploaded successfully`)
       
       // Navigate to document review after successful upload
       setTimeout(() => {
         navigate(`/documents/${data.id}`)
       }, 1000)
     },
-    onError: (error: any, file) => {
-      const errorMessage = error.response?.data?.detail || 'Upload failed'
+    onError: (error: any, variables) => {
+      console.error('Upload error details:', error)
+      let errorMessage = 'Upload failed'
+      
+      // Handle the error message extraction
+      if (error.message) {
+        errorMessage = error.message
+      }
+      
       setFiles((prev) =>
         prev.map((f) =>
-          f.name === file.name
+          f.id === variables.id
             ? { ...f, status: 'error' as const, error: errorMessage }
             : f
         )
@@ -47,20 +56,22 @@ export default function Upload() {
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const newFiles = acceptedFiles.map((file) => ({
-      ...file,
+      originalFile: file,  // Store the actual File object here
+      id: `${file.name}-${Date.now()}-${Math.random()}`,
       status: 'pending' as const,
       progress: 0,
     }))
     setFiles((prev) => [...prev, ...newFiles])
 
     // Auto-upload files
-    newFiles.forEach((file) => {
+    newFiles.forEach((fileWithStatus) => {
       setFiles((prev) =>
         prev.map((f) =>
-          f.name === file.name ? { ...f, status: 'uploading' as const, progress: 50 } : f
+          f.id === fileWithStatus.id ? { ...f, status: 'uploading' as const, progress: 50 } : f
         )
       )
-      uploadMutation.mutate(file)
+      // Pass both the original File and the unique ID to the mutation
+      uploadMutation.mutate({ file: fileWithStatus.originalFile, id: fileWithStatus.id })
     })
   }, [uploadMutation])
 
@@ -72,8 +83,8 @@ export default function Upload() {
     maxSize: 52428800, // 50MB
   })
 
-  const removeFile = (fileName: string) => {
-    setFiles((prev) => prev.filter((f) => f.name !== fileName))
+  const removeFile = (fileId: string) => {
+    setFiles((prev) => prev.filter((f) => f.id !== fileId))
   }
 
   return (
@@ -114,14 +125,14 @@ export default function Upload() {
         <div className="mt-6 space-y-3">
           <h3 className="text-lg font-medium">Uploaded Files</h3>
           {files.map((file) => (
-            <div key={file.name} className="card p-4">
+            <div key={file.id} className="card p-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <File className="text-gray-400" size={20} />
                   <div>
-                    <p className="font-medium">{file.name}</p>
+                    <p className="font-medium">{file.originalFile.name}</p>
                     <p className="text-sm text-gray-400">
-                      {(file.size / 1024 / 1024).toFixed(2)} MB
+                      {(file.originalFile.size / 1024 / 1024).toFixed(2)} MB
                     </p>
                   </div>
                 </div>
@@ -150,7 +161,7 @@ export default function Upload() {
                     </div>
                   )}
                   <button
-                    onClick={() => removeFile(file.name)}
+                    onClick={() => removeFile(file.id)}
                     className="p-1 hover:bg-dark-700 rounded transition-colors"
                   >
                     <X size={16} />
