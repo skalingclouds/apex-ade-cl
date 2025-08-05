@@ -28,10 +28,13 @@ import {
   extractDocument,
   exportDocumentCsv,
   exportDocumentMarkdown,
-  getDocumentMarkdown
+  getDocumentMarkdown,
+  retryExtraction
 } from '../services/api'
 import Chat from '../components/Chat'
 import FieldSelector from '../components/FieldSelector'
+import ErrorDisplay from '../components/ErrorDisplay'
+import DocumentSidebar from '../components/DocumentSidebar'
 
 // Set up PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`
@@ -45,6 +48,10 @@ export default function DocumentReview() {
   const [pageNumber, setPageNumber] = useState<number>(1)
   const [showChat, setShowChat] = useState(false)
   const [showFieldSelector, setShowFieldSelector] = useState(false)
+  const [showSidebar, setShowSidebar] = useState(true)
+  const [highlightAreas, setHighlightAreas] = useState<Array<{ page: number; bbox: number[] }>>([])
+  const [exportingCsv, setExportingCsv] = useState(false)
+  const [exportingMarkdown, setExportingMarkdown] = useState(false)
   
   const documentId = parseInt(id!)
 
@@ -96,6 +103,11 @@ export default function DocumentReview() {
       queryClient.invalidateQueries(['document', documentId])
       setShowFieldSelector(true)
     },
+    onError: (error: any) => {
+      queryClient.invalidateQueries(['document', documentId])
+      const errorInfo = error.errorInfo || { message: error.message }
+      toast.error(errorInfo.message)
+    }
   })
 
   const extractMutation = useMutation(
@@ -106,10 +118,28 @@ export default function DocumentReview() {
         setShowFieldSelector(false)
         toast.success('Document extracted successfully')
       },
+      onError: (error: any) => {
+        queryClient.invalidateQueries(['document', documentId])
+        const errorInfo = error.errorInfo || { message: error.message }
+        toast.error(errorInfo.message)
+      }
     }
   )
 
-  const handleExportCsv = async () => {
+  const retryMutation = useMutation(() => retryExtraction(documentId), {
+    onSuccess: () => {
+      queryClient.invalidateQueries(['document', documentId])
+      toast.success('Retry successful')
+    },
+    onError: (error: any) => {
+      queryClient.invalidateQueries(['document', documentId])
+      const errorInfo = error.errorInfo || { message: error.message }
+      toast.error(errorInfo.message)
+    }
+  })
+
+  const handleExportCsv = async (retryCount = 0) => {
+    setExportingCsv(true)
     try {
       const blob = await exportDocumentCsv(documentId)
       const url = window.URL.createObjectURL(blob)
@@ -119,12 +149,33 @@ export default function DocumentReview() {
       a.click()
       window.URL.revokeObjectURL(url)
       toast.success('CSV exported successfully')
-    } catch (error) {
-      toast.error('Failed to export CSV')
+    } catch (error: any) {
+      const message = error.response?.data?.detail || 'Failed to export CSV'
+      
+      if (retryCount < 2) {
+        // Show retry option
+        toast.error(
+          <div>
+            <p>{message}</p>
+            <button 
+              onClick={() => handleExportCsv(retryCount + 1)}
+              className="mt-2 text-xs underline hover:text-accent-blue"
+            >
+              Retry
+            </button>
+          </div>,
+          { duration: 5000 }
+        )
+      } else {
+        toast.error(`${message} (after ${retryCount + 1} attempts)`)
+      }
+    } finally {
+      setExportingCsv(false)
     }
   }
 
-  const handleExportMarkdown = async () => {
+  const handleExportMarkdown = async (retryCount = 0) => {
+    setExportingMarkdown(true)
     try {
       const blob = await exportDocumentMarkdown(documentId)
       const url = window.URL.createObjectURL(blob)
@@ -134,8 +185,28 @@ export default function DocumentReview() {
       a.click()
       window.URL.revokeObjectURL(url)
       toast.success('Markdown exported successfully')
-    } catch (error) {
-      toast.error('Failed to export Markdown')
+    } catch (error: any) {
+      const message = error.response?.data?.detail || 'Failed to export Markdown'
+      
+      if (retryCount < 2) {
+        // Show retry option
+        toast.error(
+          <div>
+            <p>{message}</p>
+            <button 
+              onClick={() => handleExportMarkdown(retryCount + 1)}
+              className="mt-2 text-xs underline hover:text-accent-blue"
+            >
+              Retry
+            </button>
+          </div>,
+          { duration: 5000 }
+        )
+      } else {
+        toast.error(`${message} (after ${retryCount + 1} attempts)`)
+      }
+    } finally {
+      setExportingMarkdown(false)
     }
   }
 
@@ -152,9 +223,17 @@ export default function DocumentReview() {
   const canParse = document.status === 'pending'
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+    <div className="h-full flex">
+      {/* Document Sidebar */}
+      <DocumentSidebar 
+        isOpen={showSidebar} 
+        onToggle={() => setShowSidebar(!showSidebar)} 
+      />
+      
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-4">
           <button
             onClick={() => navigate('/dashboard')}
@@ -174,18 +253,38 @@ export default function DocumentReview() {
           {canShowExtracted && (
             <>
               <button
-                onClick={handleExportCsv}
+                onClick={() => handleExportCsv()}
+                disabled={exportingCsv || exportingMarkdown}
                 className="btn btn-secondary flex items-center gap-2"
               >
-                <Download size={16} />
-                Export CSV
+                {exportingCsv ? (
+                  <>
+                    <Loader className="animate-spin" size={16} />
+                    Exporting...
+                  </>
+                ) : (
+                  <>
+                    <Download size={16} />
+                    Export CSV
+                  </>
+                )}
               </button>
               <button
-                onClick={handleExportMarkdown}
+                onClick={() => handleExportMarkdown()}
+                disabled={exportingCsv || exportingMarkdown}
                 className="btn btn-secondary flex items-center gap-2"
               >
-                <Download size={16} />
-                Export Markdown
+                {exportingMarkdown ? (
+                  <>
+                    <Loader className="animate-spin" size={16} />
+                    Exporting...
+                  </>
+                ) : (
+                  <>
+                    <Download size={16} />
+                    Export Markdown
+                  </>
+                )}
               </button>
             </>
           )}
@@ -253,7 +352,14 @@ export default function DocumentReview() {
         {/* PDF Viewer */}
         <div className="card p-4 flex flex-col">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="font-medium">Original PDF</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="font-medium">Original PDF</h2>
+              {highlightAreas.length > 0 && (
+                <span className="text-xs bg-yellow-400/20 text-yellow-400 px-2 py-1 rounded">
+                  {highlightAreas.filter(a => a.page === pageNumber).length} highlights on this page
+                </span>
+              )}
+            </div>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setPageNumber(Math.max(1, pageNumber - 1))}
@@ -272,20 +378,45 @@ export default function DocumentReview() {
               >
                 <ChevronRight size={16} />
               </button>
+              {highlightAreas.length > 0 && (
+                <button
+                  onClick={() => setHighlightAreas([])}
+                  className="ml-2 text-xs text-yellow-400 hover:text-yellow-300 transition-colors"
+                >
+                  Clear highlights
+                </button>
+              )}
             </div>
           </div>
           
-          <div className="flex-1 overflow-auto">
+          <div className="flex-1 overflow-auto relative">
             <PDFDocument
               file={getDocumentPdf(documentId)}
               onLoadSuccess={({ numPages }) => setNumPages(numPages)}
               className="pdf-document"
             >
-              <PDFDocument.Page 
-                pageNumber={pageNumber}
-                className="pdf-page"
-                width={500}
-              />
+              <div className="relative">
+                <PDFDocument.Page 
+                  pageNumber={pageNumber}
+                  className="pdf-page"
+                  width={500}
+                />
+                {/* Highlight Overlay */}
+                {highlightAreas
+                  .filter(area => area.page === pageNumber)
+                  .map((area, index) => (
+                    <div
+                      key={index}
+                      className="absolute bg-yellow-400 bg-opacity-30 pointer-events-none border-2 border-yellow-400"
+                      style={{
+                        left: `${(area.bbox[0] / 1000) * 100}%`,
+                        top: `${(area.bbox[1] / 1000) * 100}%`,
+                        width: `${((area.bbox[2] - area.bbox[0]) / 1000) * 100}%`,
+                        height: `${((area.bbox[3] - area.bbox[1]) / 1000) * 100}%`,
+                      }}
+                    />
+                  ))}
+              </div>
             </PDFDocument>
           </div>
         </div>
@@ -318,12 +449,21 @@ export default function DocumentReview() {
             )}
             
             {document.status === 'failed' && (
-              <div className="flex flex-col items-center justify-center h-full">
-                <XCircle className="text-accent-red mb-4" size={48} />
-                <p className="text-accent-red">Extraction failed</p>
-                {document.error_message && (
-                  <p className="text-sm text-gray-400 mt-2">{document.error_message}</p>
-                )}
+              <div className="flex items-center justify-center h-full p-8">
+                <div className="max-w-md w-full">
+                  <ErrorDisplay
+                    error={{
+                      message: document.error_message || 'Extraction failed',
+                      code: document.error_message?.includes('Landing AI') ? 'LANDING_AI_ERROR' : 
+                            document.error_message?.includes('validation') ? 'SCHEMA_VALIDATION_ERROR' :
+                            'EXTRACTION_ERROR'
+                    }}
+                    retryAllowed={true}
+                    escalationAvailable={true}
+                    onRetry={() => retryMutation.mutate()}
+                    onEscalate={() => escalateMutation.mutate()}
+                  />
+                </div>
               </div>
             )}
           </div>
@@ -334,7 +474,9 @@ export default function DocumentReview() {
       {showChat && (
         <Chat
           documentId={documentId}
+          documentStatus={document.status}
           onClose={() => setShowChat(false)}
+          onHighlight={(areas) => setHighlightAreas(areas)}
         />
       )}
 
@@ -347,6 +489,7 @@ export default function DocumentReview() {
           isLoading={extractMutation.isLoading}
         />
       )}
+      </div>
     </div>
   )
 }

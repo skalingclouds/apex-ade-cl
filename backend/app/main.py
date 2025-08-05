@@ -1,11 +1,16 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import settings
 from app.api.api import api_router
 from app.core.database import engine
 from app.models import Base
+from app.core.error_handlers import (
+    ExtractionError, extraction_error_handler,
+    database_error_handler, general_error_handler
+)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -34,6 +39,11 @@ if settings.BACKEND_CORS_ORIGINS:
     )
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
+
+# Register exception handlers
+app.add_exception_handler(ExtractionError, extraction_error_handler)
+app.add_exception_handler(SQLAlchemyError, database_error_handler)
+app.add_exception_handler(Exception, general_error_handler)
 
 @app.get("/")
 def root():

@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Optional, List
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+import json
 from app.models.document import DocumentStatus
 
 class DocumentBase(BaseModel):
@@ -27,9 +28,25 @@ class DocumentResponse(DocumentBase):
     processed_at: Optional[datetime] = None
     updated_at: datetime
 
+    @field_validator('extracted_data', mode='before')
+    @classmethod
+    def parse_extracted_data(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                return None
+        return v
+
     class Config:
         from_attributes = True
 
 class DocumentListResponse(BaseModel):
     documents: List[DocumentResponse]
     total: int
+
+class RejectRequest(BaseModel):
+    reason: Optional[str] = None
+
+class EscalateRequest(BaseModel):
+    reason: Optional[str] = None

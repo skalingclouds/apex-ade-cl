@@ -5,10 +5,12 @@ import { chatWithDocument, getChatHistory, ChatResponse } from '../services/api'
 
 interface ChatProps {
   documentId: number
+  documentStatus?: string
   onClose: () => void
+  onHighlight?: (areas: Array<{ page: number; bbox: number[] }>) => void
 }
 
-export default function Chat({ documentId, onClose }: ChatProps) {
+export default function Chat({ documentId, documentStatus, onClose, onHighlight }: ChatProps) {
   const [message, setMessage] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   
@@ -20,9 +22,13 @@ export default function Chat({ documentId, onClose }: ChatProps) {
   const sendMessageMutation = useMutation(
     (query: string) => chatWithDocument(documentId, query),
     {
-      onSuccess: () => {
+      onSuccess: (response) => {
         setMessage('')
         refetch()
+        // Send highlight data to parent if available
+        if (response.highlighted_areas && response.highlighted_areas.length > 0 && onHighlight) {
+          onHighlight(response.highlighted_areas)
+        }
       },
     }
   )
@@ -68,9 +74,12 @@ export default function Chat({ documentId, onClose }: ChatProps) {
               <div className="bg-dark-700 px-4 py-2 rounded-lg max-w-[80%]">
                 {msg.response}
                 {msg.highlighted_areas && msg.highlighted_areas.length > 0 && (
-                  <p className="text-xs text-gray-400 mt-2">
-                    📍 {msg.highlighted_areas.length} areas highlighted in PDF
-                  </p>
+                  <button
+                    onClick={() => onHighlight && onHighlight(msg.highlighted_areas)}
+                    className="text-xs text-accent-green hover:text-accent-green/80 mt-2 block transition-colors"
+                  >
+                    📍 Show {msg.highlighted_areas.length} highlighted areas
+                  </button>
                 )}
               </div>
             </div>
@@ -89,7 +98,12 @@ export default function Chat({ documentId, onClose }: ChatProps) {
       </div>
 
       {/* Input */}
-      <form onSubmit={handleSend} className="p-4 border-t border-dark-600">
+      {documentStatus === 'rejected' ? (
+        <div className="p-4 border-t border-dark-600 text-center text-gray-400">
+          <p className="text-sm">Chat is disabled for rejected documents</p>
+        </div>
+      ) : (
+        <form onSubmit={handleSend} className="p-4 border-t border-dark-600">
         <div className="flex gap-2">
           <input
             type="text"
@@ -107,7 +121,8 @@ export default function Chat({ documentId, onClose }: ChatProps) {
             <Send size={20} />
           </button>
         </div>
-      </form>
+        </form>
+      )}
     </div>
   )
 }

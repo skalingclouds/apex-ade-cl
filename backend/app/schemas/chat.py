@@ -7,16 +7,14 @@ class ChatRequest(BaseModel):
 
 class HighlightArea(BaseModel):
     page: int
-    x: float
-    y: float
-    width: float
-    height: float
+    bbox: List[float]  # [x1, y1, x2, y2] bounding box coordinates
 
 class ChatResponse(BaseModel):
     id: int
     query: str
     response: str
     highlighted_areas: Optional[List[HighlightArea]] = None
+    fallback: Optional[bool] = False
     created_at: datetime
 
     class Config:
