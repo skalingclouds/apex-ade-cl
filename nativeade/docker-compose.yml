@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=sqlite:///./nativeade.db
+      - HOST=0.0.0.0
+      - PORT=8000
+    volumes:
+      - ./backend/uploads:/app/uploads
+      - ./backend/nativeade.db:/app/nativeade.db
+    depends_on:
+      - db
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    environment:
+      - VITE_API_URL=http://backend:8000
+
+  db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=nativeade
+      - POSTGRES_PASSWORD=nativeade
+      - POSTGRES_DB=nativeade
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+volumes:
+  postgres_data:

@@ -1,0 +1,244 @@
+# Product Requirement Prompt (PRP) Template v1
+
+## 🎯 Product Overview
+
+### Product Name
+[Product/Feature Name]
+
+### Vision Statement
+[One-sentence description of what this product/feature aims to achieve]
+
+### Problem Statement
+[Clear description of the problem being solved]
+
+### Target Users
+- Primary: [Primary user persona]
+- Secondary: [Secondary user personas]
+
+### Success Metrics
+- [ ] [Metric 1: e.g., User engagement rate > X%]
+- [ ] [Metric 2: e.g., Task completion time < Y seconds]
+- [ ] [Metric 3: e.g., Error rate < Z%]
+
+---
+
+## 📋 Feature Requirements
+
+### Core Features
+1. **[Feature 1 Name]**
+   - Description: [Detailed description]
+   - Priority: [High/Medium/Low]
+   - User Story: As a [user type], I want to [action] so that [benefit]
+   - Acceptance Criteria:
+     - [ ] [Criterion 1]
+     - [ ] [Criterion 2]
+
+2. **[Feature 2 Name]**
+   - Description: [Detailed description]
+   - Priority: [High/Medium/Low]
+   - User Story: As a [user type], I want to [action] so that [benefit]
+   - Acceptance Criteria:
+     - [ ] [Criterion 1]
+     - [ ] [Criterion 2]
+
+### Nice-to-Have Features
+- [Feature A]: [Brief description]
+- [Feature B]: [Brief description]
+
+### Out of Scope
+- [Feature/Requirement that won't be included]
+- [Another excluded item]
+
+---
+
+## 🔧 Technical Specifications
+
+### Architecture Overview
+```
+[ASCII diagram or description of system architecture]
+```
+
+### Technology Stack
+- Frontend: [Framework/Libraries]
+- Backend: [Framework/Languages]
+- Database: [Database type]
+- Infrastructure: [Hosting/Cloud services]
+- Additional Tools: [Any other relevant tools]
+
+### API Requirements
+```yaml
+endpoints:
+  - path: /api/[endpoint]
+    method: [GET/POST/PUT/DELETE]
+    description: [What it does]
+    request:
+      parameters: [List parameters]
+    response:
+      success: [Expected response]
+      errors: [Possible errors]
+```
+
+### Data Models
+```json
+{
+  "ModelName": {
+    "field1": "type",
+    "field2": "type",
+    "relationships": []
+  }
+}
+```
+
+### Security Requirements
+- Authentication: [Method]
+- Authorization: [Approach]
+- Data Protection: [Encryption/Privacy measures]
+- Compliance: [Any regulatory requirements]
+
+---
+
+## 🎨 UI/UX Specifications
+
+### Design Principles
+- [Principle 1: e.g., Mobile-first]
+- [Principle 2: e.g., Accessibility WCAG 2.1 AA]
+- [Principle 3: e.g., Consistent with design system]
+
+### User Flow
+1. [Step 1: User action]
+2. [Step 2: System response]
+3. [Step 3: Next action]
+...
+
+### Wireframes/Mockups
+- Link: [URL to design files]
+- Key Screens:
+  - [Screen 1]: [Description]
+  - [Screen 2]: [Description]
+
+### Component Specifications
+- **[Component Name]**
+  - Purpose: [What it does]
+  - Props/Inputs: [List of inputs]
+  - States: [Different states]
+  - Behavior: [How it behaves]
+
+---
+
+## 🤖 Agent Implementation Guide
+
+### Development Phases
+1. **Phase 1: Foundation**
+   - [ ] Set up project structure
+   - [ ] Configure development environment
+   - [ ] Implement basic architecture
+
+2. **Phase 2: Core Features**
+   - [ ] Implement [Feature 1]
+   - [ ] Implement [Feature 2]
+   - [ ] Basic testing
+
+3. **Phase 3: Enhancement**
+   - [ ] Add [Enhancement 1]
+   - [ ] Performance optimization
+   - [ ] Security hardening
+
+4. **Phase 4: Polish**
+   - [ ] UI/UX refinements
+   - [ ] Documentation
+   - [ ] Final testing
+
+### Coding Standards
+- Style Guide: [Link or description]
+- Naming Conventions: [Patterns to follow]
+- File Structure: [Organization pattern]
+- Comment Requirements: [Documentation standards]
+
+### Testing Requirements
+- Unit Tests: [Coverage requirements]
+- Integration Tests: [Key scenarios]
+- E2E Tests: [Critical user paths]
+- Performance Tests: [Benchmarks]
+
+### Quality Checklist
+- [ ] Code passes all linting rules
+- [ ] All tests are passing
+- [ ] Documentation is complete
+- [ ] Security scan shows no vulnerabilities
+- [ ] Performance meets benchmarks
+- [ ] Accessibility standards met
+
+---
+
+## 📚 Research & References
+
+### Competitive Analysis
+- [Competitor 1]: [Key features and differentiators]
+- [Competitor 2]: [Key features and differentiators]
+
+### Technical References
+- [Documentation 1]: [URL and relevance]
+- [Tutorial/Guide]: [URL and what it covers]
+- [Best Practices]: [URL and key points]
+
+### Design Inspiration
+- [Reference 1]: [URL and what to note]
+- [Reference 2]: [URL and what to note]
+
+### Dependencies
+- [Library/Package 1]: [Version and purpose]
+- [Library/Package 2]: [Version and purpose]
+
+---
+
+## ⚠️ Risks & Mitigation
+
+### Technical Risks
+- **Risk**: [Description]
+  - **Impact**: [High/Medium/Low]
+  - **Mitigation**: [Strategy]
+
+### Business Risks
+- **Risk**: [Description]
+  - **Impact**: [High/Medium/Low]
+  - **Mitigation**: [Strategy]
+
+---
+
+## 📅 Timeline & Milestones
+
+### Development Timeline
+- Week 1-2: [Milestone 1]
+- Week 3-4: [Milestone 2]
+- Week 5-6: [Milestone 3]
+- Week 7-8: [Testing & Refinement]
+
+### Key Deliverables
+- [ ] [Deliverable 1]: [Due date]
+- [ ] [Deliverable 2]: [Due date]
+- [ ] [Deliverable 3]: [Due date]
+
+---
+
+## 🔄 Maintenance & Updates
+
+### Post-Launch Considerations
+- Monitoring: [What to track]
+- Updates: [Frequency and process]
+- Support: [Documentation and help resources]
+
+### Future Enhancements
+- [Enhancement 1]: [Timeline]
+- [Enhancement 2]: [Timeline]
+
+---
+
+## 📝 Additional Notes
+
+[Any other relevant information, constraints, or considerations]
+
+---
+
+**Template Version**: 1.0
+**Last Updated**: [Date]
+**Author**: [Name/Team]
