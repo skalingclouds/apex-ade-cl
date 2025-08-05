@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+env/
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.coverage
+*.log
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Backend specific
+backend/uploads/*
+!backend/uploads/.gitkeep
+backend/alembic/versions/*
+!backend/alembic/versions/.gitkeep
+
+# Frontend specific
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+frontend/.parcel-cache/
+frontend/.next/
+frontend/.nuxt/
+frontend/.cache/
+frontend/*.log*
+
+# Testing
+coverage/
+.nyc_output/
+
+# Misc
+*.bak
+.swarm/
+.claude-flow/
