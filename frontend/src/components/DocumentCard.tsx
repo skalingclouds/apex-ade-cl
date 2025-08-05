@@ -20,7 +20,9 @@ export default function DocumentCard({ document }: DocumentCardProps) {
     failed: { icon: XCircle, color: 'text-accent-red', bg: 'bg-accent-red/10' },
   }
 
-  const config = statusConfig[document.status]
+  // Convert status to lowercase to match the config keys
+  const normalizedStatus = document.status.toLowerCase()
+  const config = statusConfig[normalizedStatus] || statusConfig.pending
   const StatusIcon = config.icon
 
   return (

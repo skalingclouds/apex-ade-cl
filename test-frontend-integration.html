@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frontend Integration Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #0a0a0a;
+            color: #e5e5e5;
+        }
+        .container {
+            background: #1a1a1a;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+        }
+        h1 {
+            color: #3b82f6;
+            margin-bottom: 30px;
+        }
+        .status {
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            font-family: 'Courier New', monospace;
+        }
+        .success {
+            background: #065f46;
+            border: 1px solid #10b981;
+            color: #10b981;
+        }
+        .error {
+            background: #7f1d1d;
+            border: 1px solid #ef4444;
+            color: #ef4444;
+        }
+        .data-display {
+            background: #262626;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .data-display h3 {
+            color: #60a5fa;
+            margin-top: 0;
+        }
+        pre {
+            background: #0a0a0a;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            color: #a1a1aa;
+        }
+        button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #2563eb;
+        }
+        .link-button {
+            background: #8b5cf6;
+        }
+        .link-button:hover {
+            background: #7c3aed;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Frontend Integration Test - Document #8</h1>
+        
+        <div id="status" class="status">Testing API connectivity...</div>
+        
+        <div>
+            <button onclick="testBackendDirect()">Test Backend Direct (8000)</button>
+            <button onclick="testFrontendProxy()">Test Frontend Proxy (3000)</button>
+            <button onclick="testAll()">Test All Endpoints</button>
+            <button class="link-button" onclick="window.open('http://localhost:3000/document/8', '_blank')">Open in App</button>
+        </div>
+        
+        <div id="results"></div>
+    </div>
+
+    <script>
+        async function testBackendDirect() {
+            const status = document.getElementById('status');
+            const results = document.getElementById('results');
+            
+            try {
+                status.className = 'status';
+                status.textContent = 'Testing backend API directly on port 8000...';
+                
+                const response = await fetch('http://localhost:8000/api/v1/documents/8');
+                const data = await response.json();
+                
+                status.className = 'status success';
+                status.textContent = '✓ Backend API (port 8000) is working!';
+                
+                results.innerHTML = `
+                    <div class="data-display">
+                        <h3>Backend Direct Response (Port 8000)</h3>
+                        <p><strong>Document ID:</strong> ${data.id}</p>
+                        <p><strong>Filename:</strong> ${data.filename}</p>
+                        <p><strong>Status:</strong> ${data.status}</p>
+                        <h4>Extracted Data:</h4>
+                        <pre>${JSON.stringify(data.extracted_data, null, 2)}</pre>
+                        <h4>Markdown Preview:</h4>
+                        <pre>${data.extracted_md ? data.extracted_md.substring(0, 500) + '...' : 'No markdown'}</pre>
+                    </div>
+                `;
+            } catch (error) {
+                status.className = 'status error';
+                status.textContent = '✗ Backend API error: ' + error.message;
+                results.innerHTML = `<div class="data-display"><pre>Error: ${error.stack}</pre></div>`;
+            }
+        }
+        
+        async function testFrontendProxy() {
+            const status = document.getElementById('status');
+            const results = document.getElementById('results');
+            
+            try {
+                status.className = 'status';
+                status.textContent = 'Testing frontend proxy on port 3000...';
+                
+                const response = await fetch('http://localhost:3000/api/v1/documents/8');
+                const data = await response.json();
+                
+                status.className = 'status success';
+                status.textContent = '✓ Frontend proxy (port 3000) is working!';
+                
+                results.innerHTML = `
+                    <div class="data-display">
+                        <h3>Frontend Proxy Response (Port 3000)</h3>
+                        <p><strong>Document ID:</strong> ${data.id}</p>
+                        <p><strong>Filename:</strong> ${data.filename}</p>
+                        <p><strong>Status:</strong> ${data.status}</p>
+                        <h4>Extracted Data:</h4>
+                        <pre>${JSON.stringify(data.extracted_data, null, 2)}</pre>
+                        <h4>Markdown Preview:</h4>
+                        <pre>${data.extracted_md ? data.extracted_md.substring(0, 500) + '...' : 'No markdown'}</pre>
+                    </div>
+                `;
+            } catch (error) {
+                status.className = 'status error';
+                status.textContent = '✗ Frontend proxy error: ' + error.message;
+                results.innerHTML = `<div class="data-display"><pre>Error: ${error.stack}</pre></div>`;
+            }
+        }
+        
+        async function testAll() {
+            const status = document.getElementById('status');
+            const results = document.getElementById('results');
+            
+            status.className = 'status';
+            status.textContent = 'Testing all endpoints...';
+            
+            let allResults = '<h2>Complete Integration Test Results</h2>';
+            let allSuccess = true;
+            
+            // Test endpoints
+            const tests = [
+                { name: 'Backend API - Document', url: 'http://localhost:8000/api/v1/documents/8' },
+                { name: 'Frontend Proxy - Document', url: 'http://localhost:3000/api/v1/documents/8' },
+                { name: 'Backend API - List', url: 'http://localhost:8000/api/v1/documents/' },
+                { name: 'Frontend Proxy - List', url: 'http://localhost:3000/api/v1/documents/' },
+            ];
+            
+            for (const test of tests) {
+                try {
+                    const response = await fetch(test.url);
+                    const data = await response.json();
+                    
+                    allResults += `
+                        <div class="data-display">
+                            <h3>✓ ${test.name}</h3>
+                            <p>Status: ${response.status} ${response.statusText}</p>
+                            <pre>${JSON.stringify(data, null, 2).substring(0, 300)}...</pre>
+                        </div>
+                    `;
+                } catch (error) {
+                    allSuccess = false;
+                    allResults += `
+                        <div class="data-display">
+                            <h3>✗ ${test.name}</h3>
+                            <pre>Error: ${error.message}</pre>
+                        </div>
+                    `;
+                }
+            }
+            
+            status.className = allSuccess ? 'status success' : 'status error';
+            status.textContent = allSuccess ? '✓ All tests passed!' : '✗ Some tests failed';
+            results.innerHTML = allResults;
+        }
+        
+        // Run test on load
+        window.onload = () => testFrontendProxy();
+    </script>
+</body>
+</html>

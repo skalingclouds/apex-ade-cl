@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Extraction Display</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #e0e0e0;
+        }
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .card {
+            background: #2a2a2a;
+            border-radius: 8px;
+            padding: 20px;
+            border: 1px solid #3a3a3a;
+        }
+        h2 {
+            color: #4ade80;
+            margin-top: 0;
+        }
+        .status {
+            padding: 5px 10px;
+            background: #22c55e;
+            color: white;
+            border-radius: 4px;
+            display: inline-block;
+            margin-bottom: 10px;
+        }
+        .data-field {
+            margin: 10px 0;
+            padding: 10px;
+            background: #1a1a1a;
+            border-radius: 4px;
+        }
+        .field-name {
+            font-weight: bold;
+            color: #60a5fa;
+        }
+        .markdown-content {
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 500px;
+            overflow-y: auto;
+            background: #1a1a1a;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        button {
+            background: #4ade80;
+            color: black;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+            font-weight: bold;
+        }
+        button:hover {
+            background: #22c55e;
+        }
+    </style>
+</head>
+<body>
+    <h1>Document Extraction Test - Document ID: 8</h1>
+    <div class="status" id="status">Loading...</div>
+    
+    <div class="container">
+        <div class="card">
+            <h2>Extracted Data</h2>
+            <div id="extracted-data">Loading...</div>
+        </div>
+        
+        <div class="card">
+            <h2>Markdown Content (First 500 chars)</h2>
+            <div id="markdown-content" class="markdown-content">Loading...</div>
+        </div>
+    </div>
+    
+    <div style="margin-top: 20px;">
+        <button onclick="fetchDocument()">Refresh Document</button>
+        <button onclick="fetchMarkdown()">Fetch Full Markdown</button>
+    </div>
+    
+    <script>
+        const API_BASE = 'http://localhost:8000/api/v1';
+        const DOC_ID = 8;
+        
+        async function fetchDocument() {
+            try {
+                const response = await fetch(`${API_BASE}/documents/${DOC_ID}`);
+                const data = await response.json();
+                
+                // Update status
+                document.getElementById('status').textContent = `Status: ${data.status}`;
+                document.getElementById('status').style.background = 
+                    data.status === 'EXTRACTED' ? '#22c55e' : 
+                    data.status === 'FAILED' ? '#ef4444' : '#eab308';
+                
+                // Display extracted data
+                const extractedDiv = document.getElementById('extracted-data');
+                if (data.extracted_data) {
+                    const parsedData = typeof data.extracted_data === 'string' 
+                        ? JSON.parse(data.extracted_data) 
+                        : data.extracted_data;
+                    
+                    extractedDiv.innerHTML = Object.entries(parsedData)
+                        .map(([key, value]) => `
+                            <div class="data-field">
+                                <span class="field-name">${key}:</span> ${value || 'N/A'}
+                            </div>
+                        `).join('');
+                } else {
+                    extractedDiv.innerHTML = '<p>No extracted data available</p>';
+                }
+                
+                // Display markdown preview
+                const markdownDiv = document.getElementById('markdown-content');
+                if (data.extracted_md) {
+                    markdownDiv.textContent = data.extracted_md.substring(0, 500) + '...';
+                } else {
+                    markdownDiv.textContent = 'No markdown content available';
+                }
+                
+            } catch (error) {
+                console.error('Error fetching document:', error);
+                alert('Error fetching document: ' + error.message);
+            }
+        }
+        
+        async function fetchMarkdown() {
+            try {
+                const response = await fetch(`${API_BASE}/documents/${DOC_ID}/markdown`);
+                const data = await response.json();
+                
+                if (data.markdown) {
+                    const markdownDiv = document.getElementById('markdown-content');
+                    markdownDiv.textContent = data.markdown;
+                } else {
+                    alert('No markdown content available');
+                }
+            } catch (error) {
+                console.error('Error fetching markdown:', error);
+                alert('Error fetching markdown: ' + error.message);
+            }
+        }
+        
+        // Load on page load
+        fetchDocument();
+    </script>
+</body>
+</html>

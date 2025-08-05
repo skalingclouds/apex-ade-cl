@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project APEX SDK: Batch Processing Module</title>
+    <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-gray-900 text-gray-300 font-sans antialiased">
+
+    <div class="min-h-screen flex flex-col items-center justify-center p-4 sm:p-6 lg:p-8">
+        <main class="w-full max-w-5xl mx-auto">
+            <header class="mb-8 text-center">
+                <h1 class="text-3xl sm:text-4xl font-bold text-white tracking-tight">
+                    Project APEX SDK: Batch Processing Module
+                </h1>
+                <p class="mt-2 text-lg text-gray-400">Conceptual Example for Asynchronous Batch Processing</p>
+            </header>
+
+            <div class="bg-gray-800/50 backdrop-blur-sm rounded-xl shadow-2xl ring-1 ring-white/10">
+                <div class="p-6 sm:p-8">
+                    <h2 class="text-xl font-semibold text-white mb-3">Batch Processing Script: batch_processor.py</h2>
+                    <p class="text-gray-400 leading-relaxed">
+                        The `batch_processor.py` script serves as a conceptual example for processing multiple documents in a highly efficient, asynchronous manner. It demonstrates a common real-world use case: scanning a directory of documents, uploading them in parallel, initiating extraction jobs, and then polling for the collective completion of the batch before fetching all results. This approach maximizes throughput by preventing the application from waiting idly for individual network operations to complete.
+                    </p>
+                </div>
+
+                <div class="px-6 sm:px-8 pb-8">
+                    <div class="bg-gray-900 rounded-lg shadow-lg overflow-hidden ring-1 ring-white/10">
+                        <div class="flex items-center justify-between bg-gray-800 px-4 py-2 border-b border-gray-700">
+                             <span class="text-sm text-gray-200 font-mono">batch_processor.py</span>
+                             <span class="text-xs text-gray-500">Conceptual Example</span>
+                        </div>
+                        <pre><code class="language-python">
+"""
+Module: batch_processor.py
+Description: A conceptual example demonstrating how to process a batch of
+             documents asynchronously using the Project APEX SDK.
+"""
+import asyncio
+import os
+import time
+from typing import List, Tuple
+
+# --- Simulated SDK Modules ---
+# In a real application, these classes would be imported from their
+# respective modules (e.g., config, processing, results).
+# We define them here to make this a self-contained, runnable example.
+
+class Client:
+    """Simulated SDK Client."""
+    def __init__(self, api_key: str): self.api_key = api_key
+
+class UploadedDocument:
+    """Simulated uploaded document object."""
+    def __init__(self, doc_id: str, file_name: str):
+        self.id = doc_id
+        self.file_name = file_name
+
+class ExtractionJob:
+    """Simulated extraction job object."""
+    def __init__(self, job_id: str, doc_id: str, file_name: str, status: str = "processing"):
+        self.id = job_id
+        self.doc_id = doc_id
+        self.file_name = file_name
+        self.status = status
+        self._refresh_count = 0
+
+    def refresh(self):
+        """Simulates refreshing job status. Completes after 2 refreshes."""
+        if self.status == "processing" and self._refresh_count >= 2:
+            self.status = "completed"
+        self._refresh_count += 1
+
+class ExtractionResult:
+    """Simulated result object."""
+    def __init__(self, job_id: str, data: dict):
+        self.job_id = job_id
+        self.data = data
+
+# --- Simulated SDK Functions (Asynchronous) ---
+
+async def upload_document(client: Client, file_path: str) -> UploadedDocument:
+    """Simulates uploading a document asynchronously."""
+    file_name = os.path.basename(file_path)
+    print(f"  [Upload] Starting upload for '{file_name}'...")
+    await asyncio.sleep(0.5) # Simulate network latency
+    doc_id = f"doc_{os.urandom(6).hex()}"
+    print(f"  [Upload] ✔ Finished upload for '{file_name}'. ID: {doc_id}")
+    return UploadedDocument(doc_id=doc_id, file_name=file_name)
+
+async def start_extraction(client: Client, doc: UploadedDocument, schema_id: str) -> ExtractionJob:
+    """Simulates starting an extraction job asynchronously."""
+    print(f"  [Extract] Starting job for '{doc.file_name}' (Doc ID: {doc.id})...")
+    await asyncio.sleep(0.2) # Simulate API call latency
+    job_id = f"job_{os.urandom(6).hex()}"
+    print(f"  [Extract] ✔ Job started for '{doc.file_name}'. Job ID: {job_id}")
+    return ExtractionJob(job_id=job_id, doc_id=doc.id, file_name=doc.file_name)
+
+async def get_extraction_results(client: Client, job: ExtractionJob) -> ExtractionResult:
+    """Simulates fetching results for a completed job."""
+    print(f"  [Result] Fetching result for job '{job.id}' ('{job.file_name}')...")
+    await asyncio.sleep(0.3)
+    # Simulate some extracted data
+    simulated_data = {"invoice_id": f"INV-{job.id[-4:]}", "amount": 100.0}
+    return ExtractionResult(job_id=job.id, data=simulated_data)
+
+# --- Batch Processing Logic ---
+
+async def process_single_document(client: Client, file_path: str, schema_id: str) -> ExtractionJob:
+    """Async wrapper for the upload-and-start-extraction sequence."""
+    uploaded_doc = await upload_document(client, file_path)
+    extraction_job = await start_extraction(client, uploaded_doc, schema_id)
+    return extraction_job
+
+def scan_directory(directory: str) -> List[str]:
+    """Scans a directory for files to process."""
+    print(f"\n1. Scanning directory: '{directory}'...")
+    files = [os.path.join(directory, f) for f in os.listdir(directory) if os.path.isfile(os.path.join(directory, f))]
+    print(f"   Found {len(files)} documents to process.")
+    return files
+
+async def main():
+    """Main function to orchestrate the batch processing workflow."""
+    start_time = time.time()
+    
+    # --- Setup ---
+    client = Client(api_key="DUMMY_API_KEY")
+    schema_id = "schema_invoices_v2"
+    DOC_DIRECTORY = "batch_documents"
+
+    # Create dummy files for demonstration
+    if not os.path.exists(DOC_DIRECTORY): os.makedirs(DOC_DIRECTORY)
+    for i in range(3):
+        with open(os.path.join(DOC_DIRECTORY, f"invoice_{i+1}.pdf"), "w") as f:
+            f.write("dummy content")
+
+    # 1. Scan for documents
+    file_paths = scan_directory(DOC_DIRECTORY)
+    if not file_paths:
+        print("No documents found. Exiting.")
+        return
+
+    # 2. Asynchronously create all extraction jobs
+    # `asyncio.gather` runs all tasks concurrently and waits for all to complete.
+    print("\n2. Creating batch of jobs (uploading and starting extraction in parallel)...")
+    job_creation_tasks = [process_single_document(client, fp, schema_id) for fp in file_paths]
+    jobs: List[ExtractionJob] = await asyncio.gather(*job_creation_tasks)
+    print("   ✔ All jobs created.")
+
+    # 3. Poll for the status of all jobs until completion
+    print("\n3. Polling for job completion...")
+    while any(j.status == "processing" for j in jobs):
+        print(f"   -> Batch status: {len([j for j in jobs if j.status == 'completed'])}/{len(jobs)} completed. Waiting...")
+        await asyncio.sleep(2) # Wait before checking all statuses again
+        for job in jobs:
+            if job.status == "processing":
+                job.refresh() # Simulate checking the API for a status update
+    print("   ✔ All jobs in the batch have completed.")
+
+    # 4. Asynchronously retrieve results for all completed jobs
+    print("\n4. Retrieving results for all completed jobs...")
+    completed_jobs = [j for j in jobs if j.status == "completed"]
+    result_fetching_tasks = [get_extraction_results(client, job) for job in completed_jobs]
+    results: List[ExtractionResult] = await asyncio.gather(*result_fetching_tasks)
+    print("   ✔ All results retrieved.")
+
+    # 5. Display results
+    print("\n--- ✅ Batch Processing Complete ---")
+    for result in results:
+        print(f"  - Job ID: {result.job_id}, Data: {result.data}")
+    
+    # --- Cleanup ---
+    for fp in file_paths: os.remove(fp)
+    os.rmdir(DOC_DIRECTORY)
+    print("\n(Cleaned up dummy files and directory)")
+    
+    end_time = time.time()
+    print(f"\nTotal execution time: {end_time - start_time:.2f} seconds.")
+
+
+if __name__ == "__main__":
+    # Use asyncio.run() to execute the async main function
+    asyncio.run(main())
+
+</code></pre>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

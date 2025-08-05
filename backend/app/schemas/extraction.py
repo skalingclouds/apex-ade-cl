@@ -11,6 +11,7 @@ class ParseResponse(BaseModel):
     fields: List[FieldInfo]
     document_type: Optional[str] = None
     confidence: Optional[float] = None
+    markdown: Optional[str] = None
 
 class FieldSelection(BaseModel):
     selected_fields: List[str]

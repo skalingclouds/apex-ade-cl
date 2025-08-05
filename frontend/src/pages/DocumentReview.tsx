@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from 'react-query'
-import { Document as PDFDocument } from 'react-pdf'
+import { Document as PDFDocument, Page } from 'react-pdf'
 import { pdfjs } from 'react-pdf'
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css'
 import 'react-pdf/dist/esm/Page/TextLayer.css'
@@ -61,7 +61,7 @@ export default function DocumentReview() {
     {
       refetchInterval: (data) => {
         // Poll while processing
-        if (data && ['parsing', 'extracting'].includes(data.status)) {
+        if (data && ['PARSING', 'EXTRACTING'].includes(data.status)) {
           return 2000
         }
         return false
@@ -73,7 +73,7 @@ export default function DocumentReview() {
     ['document-markdown', documentId],
     () => getDocumentMarkdown(documentId),
     {
-      enabled: !!document && ['extracted', 'approved'].includes(document.status),
+      enabled: !!document && ['EXTRACTED', 'APPROVED'].includes(document.status),
     }
   )
 
@@ -218,9 +218,9 @@ export default function DocumentReview() {
     )
   }
 
-  const canShowExtracted = ['extracted', 'approved', 'rejected', 'escalated'].includes(document.status)
-  const canApprove = document.status === 'extracted'
-  const canParse = document.status === 'pending'
+  const canShowExtracted = ['EXTRACTED', 'APPROVED', 'REJECTED', 'ESCALATED'].includes(document.status)
+  const canApprove = document.status === 'EXTRACTED'
+  const canParse = document.status === 'PENDING'
 
   return (
     <div className="h-full flex">
@@ -396,7 +396,7 @@ export default function DocumentReview() {
               className="pdf-document"
             >
               <div className="relative">
-                <PDFDocument.Page 
+                <Page 
                   pageNumber={pageNumber}
                   className="pdf-page"
                   width={500}
@@ -428,7 +428,7 @@ export default function DocumentReview() {
           </div>
           
           <div className="flex-1 overflow-auto">
-            {document.status === 'pending' && (
+            {document.status === 'PENDING' && (
               <div className="flex flex-col items-center justify-center h-full text-gray-400">
                 <FileText size={48} className="mb-4" />
                 <p>Click "Start Extraction" to begin processing</p>
@@ -448,7 +448,7 @@ export default function DocumentReview() {
               </div>
             )}
             
-            {document.status === 'failed' && (
+            {document.status === 'FAILED' && (
               <div className="flex items-center justify-center h-full p-8">
                 <div className="max-w-md w-full">
                   <ErrorDisplay

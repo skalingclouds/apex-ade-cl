@@ -24,15 +24,22 @@ async def upload_document(
 ):
     """Upload a PDF document for processing"""
     
+    print(f"Upload request received - filename: {file.filename if file else 'No file'}")
+    
+    # Read file content first to check size
+    content = await file.read()
+    file_size = len(content)
+    
     # Validate file size
-    if file.size > settings.MAX_UPLOAD_SIZE:
+    if file_size > settings.MAX_UPLOAD_SIZE:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail=f"File size exceeds maximum allowed size of {settings.MAX_UPLOAD_SIZE} bytes"
         )
     
     # Validate file type
-    if not file.filename.lower().endswith('.pdf'):
+    print(f"File validation - filename: {file.filename}, ends with pdf: {file.filename.lower().endswith('.pdf')}")
+    if not file.filename or not file.filename.lower().endswith('.pdf'):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only PDF files are allowed"
@@ -43,9 +50,8 @@ async def upload_document(
     filename = f"{timestamp}_{file.filename}"
     filepath = os.path.join(settings.UPLOAD_DIRECTORY, filename)
     
-    # Save file
+    # Save file (content already read above)
     async with aiofiles.open(filepath, 'wb') as f:
-        content = await file.read()
         await f.write(content)
     
     # Create database entry

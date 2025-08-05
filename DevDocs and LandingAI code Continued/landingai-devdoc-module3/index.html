@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project APEX SDK: Module 3 - Schema Definition</title>
+    <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-gray-900 text-gray-300 font-sans antialiased">
+
+    <div class="min-h-screen flex flex-col items-center justify-center p-4 sm:p-6 lg:p-8">
+        <main class="w-full max-w-4xl mx-auto">
+            <header class="mb-8 text-center">
+                <h1 class="text-3xl sm:text-4xl font-bold text-white tracking-tight">
+                    Project APEX SDK: Module 3
+                </h1>
+                <p class="mt-2 text-lg text-gray-400">Schema Definition</p>
+            </header>
+
+            <div class="bg-gray-800/50 backdrop-blur-sm rounded-xl shadow-2xl ring-1 ring-white/10">
+                <div class="p-6 sm:p-8">
+                    <h2 class="text-xl font-semibold text-white mb-3">Module Overview</h2>
+                    <p class="text-gray-400 leading-relaxed">
+                        The `schemas.py` module is critical for structured data extraction. It leverages Pydantic models to define the exact data structure you want to extract from a document. The SDK uses these models to generate the required JSON schema for the API call, ensuring that the returned data is strongly-typed, validated, and easy to work with. This approach replaces manually writing complex JSON schemas with clean, self-documenting Python code.
+                    </p>
+                </div>
+
+                <div class="px-6 sm:px-8 pb-8">
+                    <div class="bg-gray-900 rounded-lg shadow-lg overflow-hidden ring-1 ring-white/10">
+                        <div class="flex items-center justify-between bg-gray-800 px-4 py-2 border-b border-gray-700">
+                             <span class="text-sm text-gray-200 font-mono">schemas.py</span>
+                             <span class="text-xs text-gray-500">Core Module</span>
+                        </div>
+                        <pre><code class="language-python">
+"""
+Module: schemas.py
+Description: This module defines the Pydantic models used to specify the
+             data extraction schema for the LandingAI agentic-doc SDK.
+             These models are converted to JSON schema for the API.
+"""
+
+from datetime import date
+from typing import List, Optional
+from pydantic import BaseModel, Field
+
+# In a real SDK, these models would be part of the 'agentic-doc' library.
+# We define them here for demonstration purposes.
+
+class LineItem(BaseModel):
+    """
+    Represents a single line item within an invoice, such as a product
+    or service.
+    """
+    description: str = Field(..., description="The description of the item or service.")
+    quantity: int = Field(..., description="The quantity of the item.")
+    unit_price: float = Field(..., description="The price per unit of the item.")
+    total: float = Field(..., description="The total price for the line item (quantity * unit_price).")
+
+class InvoiceSchema(BaseModel):
+    """
+    Defines the structured data schema for an invoice document.
+    This Pydantic model is used by the SDK to guide the extraction process.
+    """
+    invoice_id: str = Field(
+        ...,
+        description="The unique identifier for the invoice, e.g., 'INV-00123'."
+    )
+    issue_date: date = Field(
+        ...,
+        description="The date the invoice was issued."
+    )
+    due_date: Optional[date] = Field(
+        None,
+        description="The date the invoice payment is due."
+    )
+    total_amount: float = Field(
+        ...,
+        description="The total amount due on the invoice."
+    )
+    line_items: List[LineItem] = Field(
+        default_factory=list,
+        description="A list of all line items on the invoice."
+    )
+
+
+def get_schema_as_json(model: BaseModel) -> str:
+    """
+    Converts a Pydantic model into its JSON schema representation.
+
+    Args:
+        model (BaseModel): The Pydantic model class to convert.
+
+    Returns:
+        str: A JSON string representing the schema.
+    """
+    # In Pydantic v2, `model_json_schema()` is the method.
+    return model.model_json_schema(indent=2)
+
+
+# --- Main Execution Block ---
+# This demonstrates how the InvoiceSchema is used to generate a JSON schema string
+# that would be passed to the API.
+if __name__ == "__main__":
+    print("--- Generating JSON Schema from Pydantic Model ---")
+
+    # 1. Get the JSON schema string from the InvoiceSchema model
+    invoice_json_schema = get_schema_as_json(InvoiceSchema)
+
+    print("The following JSON schema would be sent to the LandingAI API:")
+    print("---------------------------------------------------------")
+    print(invoice_json_schema)
+    print("---------------------------------------------------------")
+
+    # 2. Demonstrate creating an instance (for data validation)
+    print("\\n--- Demonstrating Model Instantiation ---")
+    sample_data = {
+        "invoice_id": "INV-2024-08-04",
+        "issue_date": "2024-08-04",
+        "total_amount": 450.00,
+        "line_items": [
+            {
+                "description": "Pro-level Widget",
+                "quantity": 2,
+                "unit_price": 150.00,
+                "total": 300.00
+            },
+            {
+                "description": "Standard Widget",
+                "quantity": 3,
+                "unit_price": 50.00,
+                "total": 150.00
+            }
+        ]
+    }
+    try:
+        validated_invoice = InvoiceSchema(**sample_data)
+        print("✔ Sample data successfully validated against InvoiceSchema.")
+        print("Validated Invoice ID:", validated_invoice.invoice_id)
+        print("First line item:", validated_invoice.line_items[0].description)
+    except Exception as e:
+        print(f"❌ Data validation failed: {e}")
+
+</code></pre>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

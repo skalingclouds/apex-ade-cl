@@ -6,8 +6,8 @@ import DocumentCard from '../components/DocumentCard'
 import StatusChart from '../components/StatusChart'
 
 export default function Dashboard() {
-  const { data: documents, isLoading } = useQuery('documents', getDocuments)
-  const { data: stats } = useQuery('document-stats', getDocumentStats)
+  const { data: documents, isLoading } = useQuery('documents', () => getDocuments())
+  const { data: stats } = useQuery('document-stats', () => getDocumentStats())
 
   if (isLoading) {
     return (

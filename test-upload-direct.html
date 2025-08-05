@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Direct Upload Test</title>
+</head>
+<body>
+    <h1>Direct Form Upload Test</h1>
+    <p>This tests the backend directly without any JavaScript interference.</p>
+    
+    <form action="http://localhost:8000/api/v1/documents/upload" 
+          method="POST" 
+          enctype="multipart/form-data"
+          target="_blank">
+        <input type="file" name="file" accept=".pdf" required />
+        <button type="submit">Upload Directly</button>
+    </form>
+    
+    <hr>
+    
+    <h2>JavaScript Test (Minimal)</h2>
+    <input type="file" id="jsFile" accept=".pdf" />
+    <button onclick="testUpload()">Test JS Upload</button>
+    <div id="result"></div>
+    
+    <script>
+    function testUpload() {
+        const fileInput = document.getElementById('jsFile');
+        const file = fileInput.files[0];
+        if (!file) {
+            alert('Please select a file');
+            return;
+        }
+        
+        console.log('Testing with file:', file);
+        
+        // Absolutely minimal test
+        const fd = new FormData();
+        fd.append('file', file);
+        
+        // Log what we're sending
+        console.log('FormData created');
+        for (let [k, v] of fd.entries()) {
+            console.log('FormData entry:', k, v, v.constructor.name);
+        }
+        
+        fetch('http://localhost:8000/api/v1/documents/upload', {
+            method: 'POST',
+            body: fd
+        })
+        .then(r => r.text())
+        .then(text => {
+            console.log('Response:', text);
+            document.getElementById('result').innerText = text;
+        })
+        .catch(err => {
+            console.error('Error:', err);
+            document.getElementById('result').innerText = 'Error: ' + err;
+        });
+    }
+    </script>
+</body>
+</html>

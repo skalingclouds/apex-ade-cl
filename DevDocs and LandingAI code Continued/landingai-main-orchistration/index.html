@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project APEX SDK: Main Orchestration Script</title>
+    <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-gray-900 text-gray-300 font-sans antialiased">
+
+    <div class="min-h-screen flex flex-col items-center justify-center p-4 sm:p-6 lg:p-8">
+        <main class="w-full max-w-5xl mx-auto">
+            <header class="mb-8 text-center">
+                <h1 class="text-3xl sm:text-4xl font-bold text-white tracking-tight">
+                    Project APEX SDK: Main Orchestration
+                </h1>
+                <p class="mt-2 text-lg text-gray-400">End-to-End Workflow Example</p>
+            </header>
+
+            <div class="bg-gray-800/50 backdrop-blur-sm rounded-xl shadow-2xl ring-1 ring-white/10">
+                <div class="p-6 sm:p-8">
+                    <h2 class="text-xl font-semibold text-white mb-3">Orchestration Script: main.py</h2>
+                    <p class="text-gray-400 leading-relaxed">
+                        The `main.py` script is the centerpiece of the SDK example, demonstrating a complete end-to-end workflow. It ties together all previously defined modules to perform a realistic data extraction task. The script handles client initialization, schema definition, document upload, job initiation, status polling, and finally, the retrieval and printing of structured results.
+                    </p>
+                </div>
+
+                <div class="px-6 sm:px-8 pb-8">
+                    <div class="bg-gray-900 rounded-lg shadow-lg overflow-hidden ring-1 ring-white/10">
+                        <div class="flex items-center justify-between bg-gray-800 px-4 py-2 border-b border-gray-700">
+                             <span class="text-sm text-gray-200 font-mono">main.py</span>
+                             <span class="text-xs text-gray-500">Orchestration Script</span>
+                        </div>
+                        <pre><code class="language-python">
+"""
+Module: main.py
+Description: Main orchestration script for the Project APEX SDK.
+             This script demonstrates a full end-to-end workflow:
+             1. Initializing the client.
+             2. Defining a data schema.
+             3. Uploading a document and starting extraction.
+             4. Polling for results and printing the final output.
+"""
+import os
+import time
+from typing import List, Type, TypeVar, Any
+
+# --- Placeholder Modules & Classes ---
+# In a real application, these would be imported from their respective files:
+# from config import initialize_client
+# from schemas import PayrollJournalSchema
+# from processing import upload_document, start_extraction
+# from results import wait_for_job_completion, get_extraction_results
+# To make this script a self-contained example, we simulate them here.
+
+# --- Simulated 'config.py' ---
+class Client:
+    """Simulated SDK Client."""
+    def __init__(self, api_key: str):
+        if not api_key: raise ValueError("API key is missing.")
+        self.api_key = api_key
+    def __repr__(self): return "Client(api_key='...')"
+
+def initialize_client() -> Client:
+    """Simulates loading API key and initializing the client."""
+    print("1. Initializing SDK client...")
+    api_key = os.getenv("VISION_AGENT_API_KEY", "DUMMY_KEY_FOR_DEMO")
+    if api_key == "DUMMY_KEY_FOR_DEMO":
+        print("   (Using a dummy API key for this demonstration)")
+    client = Client(api_key)
+    print("✔ Client initialized.\n")
+    return client
+
+# --- Simulated 'schemas.py' ---
+class BaseModel:
+    """Simulated Pydantic BaseModel for type-hinting and structure."""
+    def __init__(self, **data: Any):
+        self._data = data
+        # Recursively convert dicts to BaseModel instances if a type hint exists
+        for field_name, field_type in self.__annotations__.items():
+            value = data.get(field_name)
+            if isinstance(value, list) and hasattr(field_type, '__args__') and issubclass(field_type.__args__[0], BaseModel):
+                item_class = field_type.__args__[0]
+                setattr(self, field_name, [item_class(**item) for item in value])
+            else:
+                setattr(self, field_name, value)
+    
+    def __repr__(self):
+        return f"{self.__class__.__name__}({self._data})"
+    
+    @classmethod
+    def get_schema_id(cls):
+        return f"schema_{cls.__name__}"
+
+class PayEntry(BaseModel):
+    employee_name: str
+    hours_worked: float
+    rate: float
+    gross_pay: float
+
+class PayrollJournalSchema(BaseModel):
+    pay_period_end_date: str
+    total_payroll_cost: float
+    entries: List[PayEntry]
+
+T = TypeVar("T", bound=BaseModel)
+
+# --- Simulated 'processing.py' ---
+class UploadedDocument:
+    def __init__(self, doc_id: str, file_name: str):
+        self.id = doc_id
+        self.file_name = file_name
+
+class ExtractionJob:
+    def __init__(self, job_id: str, doc_id: str, status: str = "processing"):
+        self.id = job_id
+        self.doc_id = doc_id
+        self.status = status
+        self._refresh_count = 0
+
+    def refresh(self):
+        if self.status == "processing" and self._refresh_count >= 2:
+            self.status = "completed"
+        self._refresh_count += 1
+
+def upload_document(client: Client, file_path: str) -> UploadedDocument:
+    print(f"3. Uploading document '{os.path.basename(file_path)}'...")
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"File not found: {file_path}")
+    simulated_id = f"doc_{os.urandom(8).hex()}"
+    doc = UploadedDocument(doc_id=simulated_id, file_name=os.path.basename(file_path))
+    print(f"✔ Document uploaded. ID: {doc.id}\n")
+    return doc
+
+def start_extraction(client: Client, doc_id: str, schema: Type[BaseModel]) -> ExtractionJob:
+    schema_id = schema.get_schema_id()
+    print(f"4. Starting extraction for document '{doc_id}' using schema '{schema_id}'...")
+    simulated_id = f"job_{os.urandom(8).hex()}"
+    job = ExtractionJob(job_id=simulated_id, doc_id=doc_id)
+    print(f"✔ Extraction job started. ID: {job.id}\n")
+    return job
+
+# --- Simulated 'results.py' ---
+class ExtractionResult(BaseModel):
+    structured_data: T
+
+def wait_for_job_completion(client: Client, job: ExtractionJob, poll_interval: int = 1):
+    print(f"5. Waiting for job '{job.id}' to complete...")
+    while job.status == "processing":
+        print(f"   -> Job status: {job.status}. Checking again in {poll_interval}s...")
+        time.sleep(poll_interval)
+        job.refresh()
+    print(f"✔ Job status: {job.status}\n")
+
+def get_extraction_results(client: Client, job: ExtractionJob, schema_class: Type[T]) -> ExtractionResult[T]:
+    print(f"6. Fetching results for completed job '{job.id}'...")
+    simulated_api_response = {
+        "pay_period_end_date": "2025-07-31",
+        "total_payroll_cost": 7500.00,
+        "entries": [
+            {"employee_name": "Alice Johnson", "hours_worked": 40.0, "rate": 50.0, "gross_pay": 2000.0},
+            {"employee_name": "Bob Williams", "hours_worked": 38.5, "rate": 45.0, "gross_pay": 1732.5},
+            {"employee_name": "Charlie Brown", "hours_worked": 40.0, "rate": 94.1875, "gross_pay": 3767.5},
+        ]
+    }
+    validated_data = schema_class(**simulated_api_response)
+    result = ExtractionResult[schema_class](structured_data=validated_data)
+    print("✔ Results retrieved and parsed into structured model.\n")
+    return result
+
+# --- Main Orchestration Workflow ---
+def run_workflow():
+    """Executes the full end-to-end SDK workflow."""
+    
+    # Step 1: Initialization
+    client = initialize_client()
+
+    # Step 2: Define Schema
+    print("2. Using schema: 'PayrollJournalSchema'\n")
+    extraction_schema = PayrollJournalSchema
+
+    # Setup a dummy document for the example
+    DUMMY_FILE = "payroll_journal_sample.pdf"
+    with open(DUMMY_FILE, "w") as f: f.write("Dummy payroll content.")
+    
+    try:
+        # Step 3: Upload Document
+        uploaded_doc = upload_document(client, DUMMY_FILE)
+
+        # Step 4: Start Extraction
+        job = start_extraction(client, uploaded_doc.id, extraction_schema)
+
+        # Step 5: Poll for Completion
+        wait_for_job_completion(client, job)
+
+        # Step 6: Retrieve and Print Results
+        if job.status == "completed":
+            results = get_extraction_results(client, job, extraction_schema)
+            
+            # Print the final, structured output
+            print("--- 🏆 Final Extraction Results ---")
+            data = results.structured_data
+            print(f"Pay Period End Date: {data.pay_period_end_date}")
+            print(f"Total Payroll Cost: ${data.total_payroll_cost:,.2f}")
+            print("--- Employee Entries ---")
+            for entry in data.entries:
+                print(
+                    f"  - Name: {entry.employee_name:<18} | "
+                    f"Hours: {entry.hours_worked:<5.1f} | "
+                    f"Rate: ${entry.rate:<7.2f} | "
+                    f"Gross Pay: ${entry.gross_pay:,.2f}"
+                )
+            print("-----------------------------------")
+        else:
+            print("❌ Workflow ended: job did not complete successfully.")
+
+    except Exception as e:
+        print(f"❌ An unexpected error occurred: {e}")
+    finally:
+        # Clean up the dummy file
+        if os.path.exists(DUMMY_FILE):
+            os.remove(DUMMY_FILE)
+            print(f"\n(Cleaned up dummy file: {DUMMY_FILE})")
+
+if __name__ == "__main__":
+    run_workflow()
+
+</code></pre>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

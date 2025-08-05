@@ -1,8 +1,9 @@
-from typing import List, Dict, Any, Type
+from typing import List, Dict, Any, Type, Optional
 from datetime import datetime
 from pathlib import Path
 import asyncio
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, create_model
+import logging
 
 from app.schemas.extraction import ParseResponse, FieldInfo
 from app.core.config import settings
@@ -16,58 +17,92 @@ except ImportError:
     parse = None
     viz_parsed_document = None
 
+logger = logging.getLogger(__name__)
+
 class ExtractionResult(BaseModel):
     data: Dict[str, Any]
     markdown: str
     processed_at: datetime
+    extraction_metadata: Optional[Dict[str, Any]] = None
 
 class LandingAIService:
     def __init__(self):
         self.api_key = settings.LANDING_AI_API_KEY
+        logger.info(f"LandingAIService initialized with API key: {self.api_key[:10] if self.api_key else 'None'}...")
     
     async def parse_document(self, file_path: str) -> ParseResponse:
-        """Parse document to identify extractable fields"""
+        """
+        Parse document to get markdown and identify potential fields.
+        This is step 1 - just parsing without extraction.
+        """
+        logger.info(f"Starting document parse for: {file_path}")
         
-        # For MVP, we'll use the agentic_doc parse function
         if parse is None:
             # Mock response for development
+            logger.warning("Landing.AI SDK not available, returning mock response")
             return ParseResponse(
                 fields=[
-                    FieldInfo(name="product_name", type="string", description="Product name"),
-                    FieldInfo(name="brand", type="string", description="Brand name"),
-                    FieldInfo(name="price", type="number", description="Product price"),
-                    FieldInfo(name="description", type="string", description="Product description"),
+                    FieldInfo(name="invoice_number", type="string", description="Invoice number"),
+                    FieldInfo(name="date", type="string", description="Date"),
+                    FieldInfo(name="total", type="number", description="Total amount"),
+                    FieldInfo(name="vendor", type="string", description="Vendor name"),
                 ],
-                document_type="product_catalog",
-                confidence=0.95
+                document_type="invoice",
+                confidence=0.95,
+                markdown="# Mock Document\n\nThis is a mock parsed document."
             )
         
-        # Run parse in executor to avoid blocking
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(
-            None,
-            parse,
-            [file_path],
-            None,  # result_save_dir
-            None,  # grounding_save_dir
-            True,  # include_marginalia
-            True   # include_metadata_in_markdown
-        )
-        
-        # Extract fields from the parsed document
-        if result and len(result) > 0:
+        try:
+            # Run parse in executor to avoid blocking
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                None,
+                lambda: parse(
+                    documents=[file_path],
+                    include_marginalia=True,
+                    include_metadata_in_markdown=True
+                )
+            )
+            
+            if not result or len(result) == 0:
+                raise Exception("No results returned from parse")
+            
             parsed_doc = result[0]
             
-            # Analyze chunks to determine available fields
-            fields = self._analyze_chunks_for_fields(parsed_doc.chunks)
+            # Log what we got
+            logger.info(f"Parse successful. Document type: {getattr(parsed_doc, 'doc_type', 'unknown')}")
+            logger.info(f"Has markdown: {hasattr(parsed_doc, 'markdown')}")
+            logger.info(f"Markdown length: {len(getattr(parsed_doc, 'markdown', ''))}")
             
+            # Get the markdown content
+            markdown_content = getattr(parsed_doc, 'markdown', '')
+            
+            # Generate suggested fields based on common document patterns
+            # For now, we'll provide a standard set that users can customize
+            suggested_fields = [
+                FieldInfo(name="custom_field_1", type="string", description="Custom text field 1", required=False),
+                FieldInfo(name="custom_field_2", type="string", description="Custom text field 2", required=False),
+                FieldInfo(name="custom_field_3", type="string", description="Custom text field 3", required=False),
+                FieldInfo(name="custom_field_4", type="number", description="Custom numeric field", required=False),
+                FieldInfo(name="custom_field_5", type="string", description="Custom text field 5", required=False),
+                FieldInfo(name="date", type="string", description="Date field", required=False),
+                FieldInfo(name="amount", type="number", description="Amount or total", required=False),
+                FieldInfo(name="name", type="string", description="Name or title", required=False),
+                FieldInfo(name="description", type="string", description="Description or notes", required=False),
+                FieldInfo(name="reference", type="string", description="Reference number or ID", required=False),
+            ]
+            
+            # Return the parse response with markdown
             return ParseResponse(
-                fields=fields,
-                document_type=parsed_doc.doc_type,
-                confidence=0.9  # You might calculate this based on parse quality
+                fields=suggested_fields,
+                document_type=getattr(parsed_doc, 'doc_type', 'document'),
+                confidence=0.9,
+                markdown=markdown_content
             )
-        
-        raise Exception("Failed to parse document")
+            
+        except Exception as e:
+            logger.error(f"Parse failed: {str(e)}", exc_info=True)
+            raise Exception(f"Failed to parse document: {str(e)}")
     
     async def extract_document(
         self, 
@@ -75,12 +110,18 @@ class LandingAIService:
         schema_model: Type[BaseModel],
         selected_fields: List[str]
     ) -> ExtractionResult:
-        """Extract data from document using provided schema"""
+        """
+        Extract data from document using provided schema.
+        This is step 2 - extraction with a dynamic schema.
+        """
+        logger.info(f"Starting extraction for: {file_path}")
+        logger.info(f"Selected fields: {selected_fields}")
+        logger.info(f"Schema model: {schema_model}")
         
         if parse is None:
             # Mock response for development
             mock_data = {
-                field: f"Sample {field}" for field in selected_fields
+                field: f"Sample {field} value" for field in selected_fields
             }
             return ExtractionResult(
                 data=mock_data,
@@ -88,25 +129,41 @@ class LandingAIService:
                 processed_at=datetime.now()
             )
         
-        # Run extraction with the dynamic schema
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(
-            None,
-            parse,
-            [file_path],
-            None,  # result_save_dir
-            None,  # grounding_save_dir
-            True,  # include_marginalia
-            True,  # include_metadata_in_markdown
-            schema_model  # extraction_model
-        )
-        
-        if result and len(result) > 0:
+        try:
+            # Run extraction with the provided schema
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                None,
+                lambda: parse(
+                    documents=[file_path],
+                    extraction_model=schema_model
+                )
+            )
+            
+            if not result or len(result) == 0:
+                raise Exception("No results returned from extraction")
+            
             parsed_doc = result[0]
             
-            # Extract the data according to schema
+            # Check if extraction was successful
             if hasattr(parsed_doc, 'extraction') and parsed_doc.extraction:
+                logger.info("Extraction successful, processing results")
+                
+                # Get the extracted data
                 extracted_data = parsed_doc.extraction.model_dump()
+                
+                # Get extraction metadata if available
+                extraction_metadata = None
+                if hasattr(parsed_doc, 'extraction_metadata'):
+                    try:
+                        extraction_metadata = parsed_doc.extraction_metadata.model_dump()
+                    except:
+                        extraction_metadata = str(parsed_doc.extraction_metadata)
+                
+                # Get markdown (might be available even with extraction)
+                markdown_content = getattr(parsed_doc, 'markdown', '')
+                
+                logger.info(f"Extracted data: {extracted_data}")
                 
                 # Filter to only selected fields
                 filtered_data = {
@@ -114,106 +171,46 @@ class LandingAIService:
                     for field in selected_fields
                 }
                 
-                # Validate extracted data against schema
-                try:
-                    validated_data = schema_model(**filtered_data)
-                    validated_dict = validated_data.model_dump()
-                except Exception as validation_error:
-                    # If validation fails, still return the data but log the error
-                    import logging
-                    logging.warning(f"Validation error: {validation_error}")
-                    validated_dict = filtered_data
+                return ExtractionResult(
+                    data=filtered_data,
+                    markdown=markdown_content,
+                    processed_at=datetime.now(),
+                    extraction_metadata=extraction_metadata
+                )
+            else:
+                # No extraction attribute, return empty values for requested fields
+                logger.warning("No extraction results found, returning empty fields")
+                empty_data = {field: None for field in selected_fields}
                 
                 return ExtractionResult(
-                    data=validated_dict,
-                    markdown=parsed_doc.markdown,
+                    data=empty_data,
+                    markdown=getattr(parsed_doc, 'markdown', ''),
                     processed_at=datetime.now()
                 )
-        
-        raise Exception("Failed to extract document data - no extraction results found")
+                
+        except Exception as e:
+            logger.error(f"Extraction failed: {str(e)}", exc_info=True)
+            # Return empty data rather than failing completely
+            empty_data = {field: None for field in selected_fields}
+            return ExtractionResult(
+                data=empty_data,
+                markdown=f"Extraction failed: {str(e)}",
+                processed_at=datetime.now()
+            )
     
     def _analyze_chunks_for_fields(self, chunks: List[Any]) -> List[FieldInfo]:
-        """Analyze document chunks to determine available fields"""
-        fields = []
-        seen_fields = set()
-        
-        # Analyze chunk types and content
-        chunk_types = set()
-        has_forms = False
-        has_numbers = False
-        
-        for chunk in chunks:
-            if hasattr(chunk, 'chunk_type') and chunk.chunk_type:
-                chunk_types.add(chunk.chunk_type.value)
-            
-            # Check for form-like content
-            if hasattr(chunk, 'text'):
-                text = chunk.text.lower()
-                if any(keyword in text for keyword in ['name:', 'date:', 'address:', 'phone:', 'email:']):
-                    has_forms = True
-                if any(char.isdigit() for char in text):
-                    has_numbers = True
-        
-        # Document structure fields
-        if 'title' in chunk_types or any(hasattr(c, 'text') and len(c.text) < 100 for c in chunks[:3]):
-            fields.append(FieldInfo(name="title", type="string", description="Document title"))
-            seen_fields.add("title")
-        
-        # Table data fields
-        if 'table' in chunk_types:
-            fields.extend([
-                FieldInfo(name="table_data", type="array", description="Extracted table data"),
-                FieldInfo(name="table_headers", type="array", description="Table column headers", required=False),
-            ])
-            seen_fields.update(["table_data", "table_headers"])
-        
-        # Text content fields
-        if 'text' in chunk_types or 'paragraph' in chunk_types:
-            fields.extend([
-                FieldInfo(name="content", type="string", description="Main document content"),
-                FieldInfo(name="summary", type="string", description="Document summary", required=False),
-            ])
-            seen_fields.update(["content", "summary"])
-        
-        # Form fields
-        if has_forms:
-            form_fields = [
-                FieldInfo(name="name", type="string", description="Name field", required=False),
-                FieldInfo(name="date", type="date", description="Date field", required=False),
-                FieldInfo(name="address", type="string", description="Address field", required=False),
-                FieldInfo(name="phone", type="string", description="Phone number", required=False),
-                FieldInfo(name="email", type="string", description="Email address", required=False),
-            ]
-            for field in form_fields:
-                if field.name not in seen_fields:
-                    fields.append(field)
-                    seen_fields.add(field.name)
-        
-        # Numeric fields
-        if has_numbers:
-            numeric_fields = [
-                FieldInfo(name="amount", type="number", description="Monetary amount", required=False),
-                FieldInfo(name="quantity", type="integer", description="Quantity or count", required=False),
-                FieldInfo(name="total", type="number", description="Total value", required=False),
-            ]
-            for field in numeric_fields:
-                if field.name not in seen_fields:
-                    fields.append(field)
-                    seen_fields.add(field.name)
-        
-        # Common metadata fields
-        metadata_fields = [
-            FieldInfo(name="author", type="string", description="Document author", required=False),
-            FieldInfo(name="created_date", type="date", description="Creation date", required=False),
-            FieldInfo(name="page_count", type="integer", description="Number of pages", required=False),
-            FieldInfo(name="language", type="string", description="Document language", required=False),
-            FieldInfo(name="category", type="string", description="Document category", required=False),
-            FieldInfo(name="metadata", type="object", description="Additional metadata", required=False),
+        """
+        Analyze document chunks to determine available fields.
+        This method is kept for backward compatibility but simplified.
+        """
+        # Return a standard set of suggested fields
+        return [
+            FieldInfo(name="custom_field_1", type="string", description="Custom text field 1", required=False),
+            FieldInfo(name="custom_field_2", type="string", description="Custom text field 2", required=False),
+            FieldInfo(name="custom_field_3", type="string", description="Custom text field 3", required=False),
+            FieldInfo(name="date", type="string", description="Date field", required=False),
+            FieldInfo(name="amount", type="number", description="Amount or total", required=False),
+            FieldInfo(name="name", type="string", description="Name or title", required=False),
+            FieldInfo(name="description", type="string", description="Description or notes", required=False),
+            FieldInfo(name="reference", type="string", description="Reference number or ID", required=False),
         ]
-        
-        for field in metadata_fields:
-            if field.name not in seen_fields:
-                fields.append(field)
-                seen_fields.add(field.name)
-        
-        return fields

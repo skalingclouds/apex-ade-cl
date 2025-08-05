@@ -1,0 +1,17 @@
+body {
+    font-family: 'Inter', sans-serif;
+}
+
+pre code.hljs, .font-mono {
+    font-family: 'JetBrains Mono', monospace;
+}
+
+pre code.hljs {
+    padding: 1.5rem;
+    font-size: 0.9rem;
+    line-height: 1.6;
+}
+
+pre {
+    margin: 0;
+}
