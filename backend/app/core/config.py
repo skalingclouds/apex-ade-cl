@@ -39,7 +39,7 @@ class Settings(BaseSettings):
         raise ValueError(v)
 
     # Landing.ai SDK
-    LANDING_AI_API_KEY: str = ""
+    VISION_AGENT_API_KEY: str = ""
     
     class Config:
         env_file = ".env"

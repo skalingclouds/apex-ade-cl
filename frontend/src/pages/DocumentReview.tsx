@@ -1,15 +1,13 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from 'react-query'
-import { Document as PDFDocument, Page } from 'react-pdf'
-import { pdfjs } from 'react-pdf'
-import 'react-pdf/dist/esm/Page/AnnotationLayer.css'
-import 'react-pdf/dist/esm/Page/TextLayer.css'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import toast from 'react-hot-toast'
+import { prepareMarkdownForDisplay } from '../utils/enhancedMarkdownUtils'
+import PDFViewer from '../components/PDFViewer'
 import { 
   ChevronLeft, 
-  ChevronRight, 
   Download, 
   CheckCircle, 
   XCircle, 
@@ -28,6 +26,7 @@ import {
   extractDocument,
   exportDocumentCsv,
   exportDocumentMarkdown,
+  exportDocumentText,
   getDocumentMarkdown,
   retryExtraction
 } from '../services/api'
@@ -36,22 +35,18 @@ import FieldSelector from '../components/FieldSelector'
 import ErrorDisplay from '../components/ErrorDisplay'
 import DocumentSidebar from '../components/DocumentSidebar'
 
-// Set up PDF.js worker
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`
-
 export default function DocumentReview() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   
-  const [numPages, setNumPages] = useState<number>(0)
-  const [pageNumber, setPageNumber] = useState<number>(1)
   const [showChat, setShowChat] = useState(false)
   const [showFieldSelector, setShowFieldSelector] = useState(false)
   const [showSidebar, setShowSidebar] = useState(true)
   const [highlightAreas, setHighlightAreas] = useState<Array<{ page: number; bbox: number[] }>>([])
   const [exportingCsv, setExportingCsv] = useState(false)
   const [exportingMarkdown, setExportingMarkdown] = useState(false)
+  const [exportingText, setExportingText] = useState(false)
   
   const documentId = parseInt(id!)
 
@@ -143,7 +138,7 @@ export default function DocumentReview() {
     try {
       const blob = await exportDocumentCsv(documentId)
       const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
+      const a = window.document.createElement('a')
       a.href = url
       a.download = `${document?.filename.replace('.pdf', '')}_export.csv`
       a.click()
@@ -179,7 +174,7 @@ export default function DocumentReview() {
     try {
       const blob = await exportDocumentMarkdown(documentId)
       const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
+      const a = window.document.createElement('a')
       a.href = url
       a.download = `${document?.filename.replace('.pdf', '')}_export.md`
       a.click()
@@ -207,6 +202,42 @@ export default function DocumentReview() {
       }
     } finally {
       setExportingMarkdown(false)
+    }
+  }
+
+  const handleExportText = async (retryCount = 0) => {
+    setExportingText(true)
+    try {
+      const blob = await exportDocumentText(documentId)
+      const url = window.URL.createObjectURL(blob)
+      const a = window.document.createElement('a')
+      a.href = url
+      a.download = `${document?.filename.replace('.pdf', '')}_export.txt`
+      a.click()
+      window.URL.revokeObjectURL(url)
+      toast.success('Plain text exported successfully')
+    } catch (error: any) {
+      const message = error.response?.data?.detail || 'Failed to export text'
+      
+      if (retryCount < 2) {
+        // Show retry option
+        toast.error(
+          <div>
+            <p>{message}</p>
+            <button 
+              onClick={() => handleExportText(retryCount + 1)}
+              className="mt-2 text-xs underline hover:text-accent-blue"
+            >
+              Retry
+            </button>
+          </div>,
+          { duration: 5000 }
+        )
+      } else {
+        toast.error(`${message} (after ${retryCount + 1} attempts)`)
+      }
+    } finally {
+      setExportingText(false)
     }
   }
 
@@ -254,7 +285,7 @@ export default function DocumentReview() {
             <>
               <button
                 onClick={() => handleExportCsv()}
-                disabled={exportingCsv || exportingMarkdown}
+                disabled={exportingCsv || exportingMarkdown || exportingText}
                 className="btn btn-secondary flex items-center gap-2"
               >
                 {exportingCsv ? (
@@ -270,8 +301,25 @@ export default function DocumentReview() {
                 )}
               </button>
               <button
+                onClick={() => handleExportText()}
+                disabled={exportingCsv || exportingMarkdown || exportingText}
+                className="btn btn-secondary flex items-center gap-2"
+              >
+                {exportingText ? (
+                  <>
+                    <Loader className="animate-spin" size={16} />
+                    Exporting...
+                  </>
+                ) : (
+                  <>
+                    <FileText size={16} />
+                    Export Text
+                  </>
+                )}
+              </button>
+              <button
                 onClick={() => handleExportMarkdown()}
-                disabled={exportingCsv || exportingMarkdown}
+                disabled={exportingCsv || exportingMarkdown || exportingText}
                 className="btn btn-secondary flex items-center gap-2"
               >
                 {exportingMarkdown ? (
@@ -351,74 +399,12 @@ export default function DocumentReview() {
       <div className="flex-1 grid grid-cols-2 gap-4 min-h-0">
         {/* PDF Viewer */}
         <div className="card p-4 flex flex-col">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <h2 className="font-medium">Original PDF</h2>
-              {highlightAreas.length > 0 && (
-                <span className="text-xs bg-yellow-400/20 text-yellow-400 px-2 py-1 rounded">
-                  {highlightAreas.filter(a => a.page === pageNumber).length} highlights on this page
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setPageNumber(Math.max(1, pageNumber - 1))}
-                disabled={pageNumber <= 1}
-                className="p-1 hover:bg-dark-700 rounded disabled:opacity-50"
-              >
-                <ChevronLeft size={16} />
-              </button>
-              <span className="text-sm">
-                Page {pageNumber} of {numPages}
-              </span>
-              <button
-                onClick={() => setPageNumber(Math.min(numPages, pageNumber + 1))}
-                disabled={pageNumber >= numPages}
-                className="p-1 hover:bg-dark-700 rounded disabled:opacity-50"
-              >
-                <ChevronRight size={16} />
-              </button>
-              {highlightAreas.length > 0 && (
-                <button
-                  onClick={() => setHighlightAreas([])}
-                  className="ml-2 text-xs text-yellow-400 hover:text-yellow-300 transition-colors"
-                >
-                  Clear highlights
-                </button>
-              )}
-            </div>
-          </div>
-          
-          <div className="flex-1 overflow-auto relative">
-            <PDFDocument
-              file={getDocumentPdf(documentId)}
-              onLoadSuccess={({ numPages }) => setNumPages(numPages)}
-              className="pdf-document"
-            >
-              <div className="relative">
-                <Page 
-                  pageNumber={pageNumber}
-                  className="pdf-page"
-                  width={500}
-                />
-                {/* Highlight Overlay */}
-                {highlightAreas
-                  .filter(area => area.page === pageNumber)
-                  .map((area, index) => (
-                    <div
-                      key={index}
-                      className="absolute bg-yellow-400 bg-opacity-30 pointer-events-none border-2 border-yellow-400"
-                      style={{
-                        left: `${(area.bbox[0] / 1000) * 100}%`,
-                        top: `${(area.bbox[1] / 1000) * 100}%`,
-                        width: `${((area.bbox[2] - area.bbox[0]) / 1000) * 100}%`,
-                        height: `${((area.bbox[3] - area.bbox[1]) / 1000) * 100}%`,
-                      }}
-                    />
-                  ))}
-              </div>
-            </PDFDocument>
-          </div>
+          <h2 className="font-medium mb-2">Original PDF</h2>
+          <PDFViewer 
+            url={getDocumentPdf(documentId)}
+            highlightAreas={highlightAreas}
+            onHighlightsClear={() => setHighlightAreas([])}
+          />
         </div>
 
         {/* Extracted Content */}
@@ -443,8 +429,99 @@ export default function DocumentReview() {
             )}
             
             {canShowExtracted && markdownData && (
-              <div className="prose prose-invert max-w-none">
-                <ReactMarkdown>{markdownData.markdown}</ReactMarkdown>
+              <div className="prose prose-invert max-w-none prose-table:border-collapse prose-td:border prose-td:border-gray-600 prose-th:border prose-th:border-gray-600 prose-th:bg-dark-700 prose-td:p-2 prose-th:p-2">
+                <ReactMarkdown 
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    table: ({children}) => (
+                      <table className="w-full border-collapse border border-gray-600">
+                        {children}
+                      </table>
+                    ),
+                    thead: ({children}) => (
+                      <thead className="bg-dark-700">
+                        {children}
+                      </thead>
+                    ),
+                    tbody: ({children}) => (
+                      <tbody>
+                        {children}
+                      </tbody>
+                    ),
+                    tr: ({children}) => (
+                      <tr className="border-b border-gray-600">
+                        {children}
+                      </tr>
+                    ),
+                    th: ({children}) => (
+                      <th className="border border-gray-600 p-2 text-left font-semibold">
+                        {children}
+                      </th>
+                    ),
+                    td: ({children}) => (
+                      <td className="border border-gray-600 p-2">
+                        {children}
+                      </td>
+                    ),
+                    p: ({children}) => (
+                      <p className="mb-4">
+                        {children}
+                      </p>
+                    ),
+                    h1: ({children}) => (
+                      <h1 className="text-2xl font-bold mb-4 text-white">
+                        {children}
+                      </h1>
+                    ),
+                    h2: ({children}) => (
+                      <h2 className="text-xl font-semibold mb-3 text-white">
+                        {children}
+                      </h2>
+                    ),
+                    h3: ({children}) => (
+                      <h3 className="text-lg font-semibold mb-2 text-white">
+                        {children}
+                      </h3>
+                    ),
+                    ul: ({children}) => (
+                      <ul className="list-disc list-inside mb-4">
+                        {children}
+                      </ul>
+                    ),
+                    ol: ({children}) => (
+                      <ol className="list-decimal list-inside mb-4">
+                        {children}
+                      </ol>
+                    ),
+                    li: ({children}) => (
+                      <li className="mb-1">
+                        {children}
+                      </li>
+                    ),
+                    code: ({children, ...props}) => {
+                      const isInline = !String(children).includes('\n')
+                      return isInline ? (
+                        <code className="bg-dark-700 px-1 py-0.5 rounded text-accent-green">
+                          {children}
+                        </code>
+                      ) : (
+                        <code className="block bg-dark-700 p-3 rounded mb-4 overflow-x-auto">
+                          {children}
+                        </code>
+                      )
+                    },
+                    blockquote: ({children}) => (
+                      <blockquote className="border-l-4 border-accent-green pl-4 mb-4 italic">
+                        {children}
+                      </blockquote>
+                    ),
+                    hr: () => (
+                      <hr className="border-gray-600 my-6" />
+                    )
+                  }}
+                >
+                  {prepareMarkdownForDisplay(markdownData.markdown)}
+                </ReactMarkdown>
               </div>
             )}
             

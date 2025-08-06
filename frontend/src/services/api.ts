@@ -230,6 +230,13 @@ export const exportDocumentMarkdown = async (id: number): Promise<Blob> => {
   return response.data
 }
 
+export const exportDocumentText = async (id: number): Promise<Blob> => {
+  const response = await api.get(`/documents/${id}/export/text`, {
+    responseType: 'blob',
+  })
+  return response.data
+}
+
 export const getDocumentPdf = (id: number): string => {
   return `${API_BASE_URL}/documents/${id}/pdf`
 }
