@@ -4,6 +4,7 @@ from pathlib import Path
 import asyncio
 from pydantic import BaseModel, Field, create_model
 import logging
+import os
 
 from app.schemas.extraction import ParseResponse, FieldInfo
 from app.core.config import settings
@@ -27,8 +28,14 @@ class ExtractionResult(BaseModel):
 
 class LandingAIService:
     def __init__(self):
-        self.api_key = settings.LANDING_AI_API_KEY
-        logger.info(f"LandingAIService initialized with API key: {self.api_key[:10]}...")
+        self.api_key = settings.VISION_AGENT_API_KEY
+        
+        # Ensure the environment variable is set for the SDK
+        if self.api_key:
+            os.environ['VISION_AGENT_API_KEY'] = self.api_key
+            logger.info(f"LandingAIService initialized with API key: {self.api_key[:10]}...")
+        else:
+            logger.warning("No VISION_AGENT_API_KEY found in settings")
     
     async def parse_document(self, file_path: str) -> ParseResponse:
         """

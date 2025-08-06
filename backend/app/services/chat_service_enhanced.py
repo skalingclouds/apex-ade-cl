@@ -5,6 +5,7 @@ import logging
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime
+import os
 
 from app.schemas.chat import HighlightArea
 from app.core.config import settings
@@ -30,7 +31,14 @@ class EnhancedChatService:
     """Enhanced service for processing chat queries about documents using Landing AI"""
     
     def __init__(self):
-        self.api_key = settings.LANDING_AI_API_KEY
+        self.api_key = settings.VISION_AGENT_API_KEY
+        
+        # Ensure the environment variable is set for the SDK
+        if self.api_key:
+            os.environ['VISION_AGENT_API_KEY'] = self.api_key
+            logger.info(f"EnhancedChatService initialized with API key")
+        else:
+            logger.warning("No VISION_AGENT_API_KEY found in settings")
     
     async def process_query(
         self,
