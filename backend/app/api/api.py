@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.endpoints import documents, chat, extraction, export, analytics
+from app.api.endpoints import documents, chat, extraction, export, analytics, document_management
 
 api_router = APIRouter()
 
@@ -8,4 +8,5 @@ api_router.include_router(documents.router, prefix="/documents", tags=["document
 api_router.include_router(chat.router, prefix="/documents", tags=["chat"])
 api_router.include_router(extraction.router, prefix="/documents", tags=["extraction"])
 api_router.include_router(export.router, prefix="/documents", tags=["export"])
+api_router.include_router(document_management.router, prefix="/documents", tags=["management"])
 api_router.include_router(analytics.router, prefix="/analytics", tags=["analytics"])

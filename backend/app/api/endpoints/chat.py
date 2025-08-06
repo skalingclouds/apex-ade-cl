@@ -12,6 +12,7 @@ from app.models.document import Document, DocumentStatus
 from app.models.chat_log import ChatLog
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.chat_service import ChatService
+from app.services.openai_service import OpenAIService
 from app.services.audit_service import AuditService
 from app.services.analytics_service import AnalyticsService
 
@@ -44,61 +45,95 @@ async def chat_with_document(
         # Track processing time
         start_time = time.time()
         
-        # Process chat query
-        chat_service = ChatService()
-        response_data = await chat_service.process_query(
-            document_path=document.filepath,
-            document_text=document.extracted_md,
-            query=chat_request.query
-        )
-        
-        # Calculate duration
-        duration_ms = (time.time() - start_time) * 1000
-        
-        # Save chat log with retry logic
-        chat_log = ChatLog(
-            document_id=document_id,
-            query=chat_request.query,
-            response=response_data.response,
-            highlighted_areas=json.dumps([area.dict() for area in response_data.highlighted_areas])
-            if response_data.highlighted_areas else None,
-            fallback=response_data.fallback
-        )
-        
-        # Retry logic for database operations
-        max_retries = 2
-        retry_count = 0
-        last_error = None
-        
-        while retry_count < max_retries:
-            try:
-                db.add(chat_log)
-                db.commit()
-                db.refresh(chat_log)
-                break  # Success, exit retry loop
-            except SQLAlchemyError as e:
-                retry_count += 1
-                last_error = e
-                logger.warning(f"Failed to save chat log (attempt {retry_count}/{max_retries}): {str(e)}")
-                db.rollback()
+        # Try OpenAI service first if configured, otherwise fall back to local chat service
+        try:
+            openai_service = OpenAIService()
+            if openai_service.client:
+                # Use OpenAI GPT-4.1 for chat
+                logger.info(f"Using OpenAI GPT-4.1 for document {document_id} chat")
+                response_data = openai_service.chat_with_document(
+                    db=db,
+                    document=document,
+                    query=chat_request.query,
+                    user_id=getattr(request.state, 'user_id', 'anonymous'),
+                    include_history=True
+                )
                 
-                if retry_count < max_retries:
-                    time.sleep(0.5)  # Wait before retry
-                else:
-                    # All retries failed, create response without saved log
-                    logger.error(f"Failed to save chat log after {max_retries} attempts: {str(e)}")
-                    # Still return the response but indicate storage failure
-                    raise HTTPException(
-                        status_code=status.HTTP_207_MULTI_STATUS,
-                        detail={
-                            "message": "Chat response generated but failed to save to history",
-                            "response": response_data.response,
-                            "highlighted_areas": [area.dict() for area in response_data.highlighted_areas] if response_data.highlighted_areas else [],
-                            "fallback": response_data.fallback,
-                            "storage_error": True,
-                            "retry_available": True
-                        }
-                    )
+                # Calculate duration
+                duration_ms = (time.time() - start_time) * 1000
+                
+                # Response already includes saved chat log from OpenAI service
+                return ChatResponse(
+                    id=response_data['id'],
+                    query=response_data['query'],
+                    response=response_data['response'],
+                    highlighted_areas=response_data.get('highlight_areas', []),
+                    fallback=False,
+                    created_at=response_data['created_at']
+                )
+            else:
+                raise ValueError("OpenAI not configured, falling back to local service")
+                
+        except Exception as openai_error:
+            logger.warning(f"OpenAI service failed, falling back to local chat: {str(openai_error)}")
+            
+            # Fall back to local chat service
+            chat_service = ChatService()
+            response_data = await chat_service.process_query(
+                document_path=document.filepath,
+                document_text=document.extracted_md,
+                query=chat_request.query
+            )
+            
+            # Calculate duration
+            duration_ms = (time.time() - start_time) * 1000
+            
+            # Save chat log with retry logic
+            chat_log = ChatLog(
+                document_id=document_id,
+                query=chat_request.query,
+                response=response_data.response,
+                highlighted_areas=json.dumps([area.dict() for area in response_data.highlighted_areas])
+                if response_data.highlighted_areas else None,
+                fallback=response_data.fallback,
+                user_id=getattr(request.state, 'user_id', 'anonymous'),
+                model_used='local'
+            )
+        
+            # Retry logic for database operations
+            max_retries = 2
+            retry_count = 0
+            last_error = None
+            
+            while retry_count < max_retries:
+                try:
+                    db.add(chat_log)
+                    db.commit()
+                    db.refresh(chat_log)
+                    break  # Success, exit retry loop
+                except SQLAlchemyError as e:
+                    retry_count += 1
+                    last_error = e
+                    logger.warning(f"Failed to save chat log (attempt {retry_count}/{max_retries}): {str(e)}")
+                    db.rollback()
+                    
+                    if retry_count < max_retries:
+                        time.sleep(0.5)  # Wait before retry
+                    else:
+                        # All retries failed, create response without saved log
+                        logger.error(f"Failed to save chat log after {max_retries} attempts: {str(e)}")
+                        # Still return the response but indicate storage failure
+                        raise HTTPException(
+                            status_code=status.HTTP_207_MULTI_STATUS,
+                            detail={
+                                "message": "Chat response generated but failed to save to history",
+                                "response": response_data.response,
+                                "highlighted_areas": [area.dict() for area in response_data.highlighted_areas] if response_data.highlighted_areas else [],
+                                "fallback": response_data.fallback,
+                                "storage_error": True,
+                                "retry_available": True
+                            }
+                        )
         
         # Audit log document access via chat
         audit_service = AuditService(db, request)

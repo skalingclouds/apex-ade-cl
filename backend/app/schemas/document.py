@@ -27,6 +27,9 @@ class DocumentResponse(DocumentBase):
     uploaded_at: datetime
     processed_at: Optional[datetime] = None
     updated_at: datetime
+    archived: bool = False
+    archived_at: Optional[datetime] = None
+    archived_by: Optional[str] = None
 
     @field_validator('extracted_data', mode='before')
     @classmethod
@@ -44,6 +47,8 @@ class DocumentResponse(DocumentBase):
 class DocumentListResponse(BaseModel):
     documents: List[DocumentResponse]
     total: int
+    page: int = 1
+    pages: int = 1
 
 class RejectRequest(BaseModel):
     reason: Optional[str] = None

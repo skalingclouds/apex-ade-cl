@@ -41,6 +41,12 @@ class Settings(BaseSettings):
     # Landing.ai SDK
     VISION_AGENT_API_KEY: str = ""
     
+    # OpenAI settings for GPT-4.1
+    OPENAI_API_KEY: str = ""
+    OPENAI_MODEL: str = "gpt-4-turbo-preview"  # GPT-4.1 model identifier
+    OPENAI_MAX_TOKENS: int = 4096
+    OPENAI_TEMPERATURE: float = 0.7
+    
     class Config:
         env_file = ".env"
         case_sensitive = True
