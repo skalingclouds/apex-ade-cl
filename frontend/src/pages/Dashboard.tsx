@@ -1,6 +1,6 @@
 import { useQuery } from 'react-query'
 import { Link } from 'react-router-dom'
-import { FileText, Clock, CheckCircle, XCircle, Upload, TrendingUp } from 'lucide-react'
+import { FileText, Clock, CheckCircle, XCircle, Upload } from 'lucide-react'
 import { getDocuments, getDocumentStats } from '../services/api'
 import DocumentCard from '../components/DocumentCard'
 import StatusChart from '../components/StatusChart'

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation } from 'react-query'
 import { Send, X, Loader } from 'lucide-react'
-import { chatWithDocument, getChatHistory, ChatResponse } from '../services/api'
+import { chatWithDocument, getChatHistory } from '../services/api'
 
 interface ChatProps {
   documentId: number
@@ -27,6 +27,7 @@ export default function Chat({ documentId, documentStatus, onClose, onHighlight 
         refetch()
         // Send highlight data to parent if available
         if (response.highlighted_areas && response.highlighted_areas.length > 0 && onHighlight) {
+          // Pass through the areas directly - they already have the correct format
           onHighlight(response.highlighted_areas)
         }
       },
@@ -75,7 +76,12 @@ export default function Chat({ documentId, documentStatus, onClose, onHighlight 
                 {msg.response}
                 {msg.highlighted_areas && msg.highlighted_areas.length > 0 && (
                   <button
-                    onClick={() => onHighlight && onHighlight(msg.highlighted_areas)}
+                    onClick={() => {
+                      if (onHighlight && msg.highlighted_areas) {
+                        // Pass through the areas directly - they already have the correct format
+                        onHighlight(msg.highlighted_areas)
+                      }
+                    }}
                     className="text-xs text-accent-green hover:text-accent-green/80 mt-2 block transition-colors"
                   >
                     📍 Show {msg.highlighted_areas.length} highlighted areas

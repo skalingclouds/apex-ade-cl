@@ -32,14 +32,18 @@ fi
 
 echo -e "${GREEN}✅ All prerequisites met!${NC}"
 
+# Get script directory
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
 # Backend setup
 echo -e "\n${BLUE}Setting up backend...${NC}"
-cd backend
+cd "$PROJECT_ROOT/backend"
 
-# Create virtual environment
+# Create virtual environment in scripts directory
 echo "Creating Python virtual environment..."
-python3 -m venv venv
-source venv/bin/activate
+python3 -m venv "$SCRIPT_DIR/venv"
+source "$SCRIPT_DIR/venv/bin/activate"
 
 # Install dependencies
 echo "Installing Python dependencies..."
@@ -60,7 +64,7 @@ echo -e "${GREEN}✅ Backend setup complete!${NC}"
 
 # Frontend setup
 echo -e "\n${BLUE}Setting up frontend...${NC}"
-cd ../frontend
+cd "$PROJECT_ROOT/frontend"
 
 # Install dependencies
 echo "Installing Node dependencies..."
@@ -72,12 +76,9 @@ echo -e "${GREEN}✅ Frontend setup complete!${NC}"
 echo -e "\n${GREEN}🎉 Setup complete!${NC}"
 echo -e "\nTo start the application:"
 echo -e "${BLUE}1. Start the backend:${NC}"
-echo "   cd backend"
-echo "   source venv/bin/activate"
-echo "   uvicorn app.main:app --reload"
+echo "   ./scripts/start-backend.sh"
 echo -e "\n${BLUE}2. Start the frontend (in a new terminal):${NC}"
-echo "   cd frontend"
-echo "   npm run dev"
+echo "   ./scripts/start-frontend.sh"
 echo -e "\n${BLUE}3. Open your browser:${NC}"
 echo "   http://localhost:3000"
 echo -e "\n${GREEN}Happy coding! 🚀${NC}"

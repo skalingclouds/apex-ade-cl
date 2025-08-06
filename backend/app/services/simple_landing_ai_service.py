@@ -197,8 +197,27 @@ class SimpleLandingAIService:
         logger.info(f"Selected fields: {selected_fields}")
         
         if parse is None:
-            # Mock response
+            # Mock response with chunk telemetry for development
             mock_data = {field: f"Sample {field} value" for field in selected_fields}
+            
+            # Add mock chunks with bounding boxes
+            mock_chunks = [
+                {
+                    'id': '0',
+                    'text': 'Sample chunk text 1',
+                    'page': 1,
+                    'bbox': [100, 100, 400, 200]  # [x1, y1, x2, y2]
+                },
+                {
+                    'id': '1',
+                    'text': 'Sample chunk text 2',
+                    'page': 1,
+                    'bbox': [100, 250, 400, 350]
+                }
+            ]
+            
+            mock_data['chunks'] = mock_chunks
+            
             return ExtractionResult(
                 data=mock_data,
                 markdown="# Mock Extraction\n\nThis is mock extracted content.",
@@ -253,8 +272,42 @@ class SimpleLandingAIService:
             # Always try to get markdown
             markdown_content = getattr(parsed_doc, 'markdown', '')
             
+            # Extract chunk telemetry with bounding boxes if available
+            chunks_with_telemetry = []
+            if hasattr(parsed_doc, 'chunks'):
+                for idx, chunk in enumerate(parsed_doc.chunks):
+                    chunk_data = {
+                        'id': str(idx),
+                        'text': getattr(chunk, 'text', ''),
+                        'page': getattr(chunk, 'page', 1)
+                    }
+                    
+                    # Try to get bounding box information
+                    if hasattr(chunk, 'bbox'):
+                        chunk_data['bbox'] = chunk.bbox
+                    elif hasattr(chunk, 'bounding_box'):
+                        chunk_data['bbox'] = chunk.bounding_box
+                    elif hasattr(chunk, 'coordinates'):
+                        # Convert coordinates to bbox format [x1, y1, x2, y2]
+                        coords = chunk.coordinates
+                        if isinstance(coords, dict):
+                            chunk_data['bbox'] = [
+                                coords.get('x', 0),
+                                coords.get('y', 0),
+                                coords.get('x', 0) + coords.get('width', 100),
+                                coords.get('y', 0) + coords.get('height', 100)
+                            ]
+                    
+                    chunks_with_telemetry.append(chunk_data)
+            
+            # Include chunks in the extraction result
+            result_data = {
+                **filtered_data,
+                'chunks': chunks_with_telemetry
+            }
+            
             return ExtractionResult(
-                data=filtered_data,
+                data=result_data,
                 markdown=markdown_content,
                 processed_at=datetime.now()
             )
