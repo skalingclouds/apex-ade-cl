@@ -110,6 +110,64 @@ class AuditService:
         self.db.commit()
         return audit_log
     
+    def log_document_action(
+        self, 
+        document_id: int, 
+        action: str,
+        metadata: Optional[dict] = None,
+        user_id: Optional[str] = None
+    ):
+        """Log a generic document action"""
+        audit_log = AuditLog(
+            document_id=document_id,
+            action=action,
+            user_id=user_id,
+            ip_address=self._get_client_ip() if self.request else None,
+            user_agent=self._get_user_agent() if self.request else None,
+            details=json.dumps(metadata) if metadata else None
+        )
+        self.db.add(audit_log)
+        self.db.commit()
+        return audit_log
+    
+    def log_bulk_action(
+        self, 
+        action: str,
+        metadata: dict,
+        user_id: Optional[str] = None
+    ):
+        """Log a bulk action affecting multiple documents"""
+        audit_log = AuditLog(
+            document_id=None,  # No single document ID for bulk actions
+            action=action,
+            user_id=user_id,
+            ip_address=self._get_client_ip() if self.request else None,
+            user_agent=self._get_user_agent() if self.request else None,
+            details=json.dumps(metadata)
+        )
+        self.db.add(audit_log)
+        self.db.commit()
+        return audit_log
+    
+    def log_bulk_access(
+        self, 
+        action: str,
+        metadata: dict,
+        user_id: Optional[str] = None
+    ):
+        """Log bulk access operations"""
+        audit_log = AuditLog(
+            document_id=None,
+            action=action,
+            user_id=user_id,
+            ip_address=self._get_client_ip() if self.request else None,
+            user_agent=self._get_user_agent() if self.request else None,
+            details=json.dumps(metadata)
+        )
+        self.db.add(audit_log)
+        self.db.commit()
+        return audit_log
+    
     def _get_client_ip(self) -> Optional[str]:
         """Extract client IP from request"""
         if not self.request:
