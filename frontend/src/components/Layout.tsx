@@ -1,5 +1,5 @@
 import { Outlet, NavLink } from 'react-router-dom'
-import { FileText, Upload, LayoutDashboard, Sun, Moon, BarChart3 } from 'lucide-react'
+import { FileText, Upload, LayoutDashboard, Sun, Moon, BarChart3, Archive } from 'lucide-react'
 import { useState } from 'react'
 
 export default function Layout() {
@@ -60,6 +60,20 @@ export default function Layout() {
           >
             <FileText size={20} />
             <span>All Documents</span>
+          </NavLink>
+          
+          <NavLink
+            to="/document-management"
+            className={({ isActive }) =>
+              `flex items-center gap-3 px-4 py-3 rounded-lg transition-colors mt-2 ${
+                isActive
+                  ? 'bg-dark-700 text-white'
+                  : 'text-gray-400 hover:bg-dark-700 hover:text-white'
+              }`
+            }
+          >
+            <Archive size={20} />
+            <span>Document Management</span>
           </NavLink>
           
           <NavLink

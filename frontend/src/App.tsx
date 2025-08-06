@@ -4,7 +4,9 @@ import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
 import Upload from './pages/Upload'
 import DocumentReview from './pages/DocumentReview'
+import DocumentManagement from './pages/DocumentManagement'
 import Analytics from './pages/Analytics'
+import AllDocuments from './pages/AllDocuments'
 import NotFound from './pages/NotFound'
 
 function App() {
@@ -15,7 +17,9 @@ function App() {
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="upload" element={<Upload />} />
+          <Route path="documents" element={<AllDocuments />} />
           <Route path="documents/:id" element={<DocumentReview />} />
+          <Route path="document-management" element={<DocumentManagement />} />
           <Route path="analytics" element={<Analytics />} />
           <Route path="*" element={<NotFound />} />
         </Route>

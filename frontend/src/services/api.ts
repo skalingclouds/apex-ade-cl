@@ -20,10 +20,10 @@ api.interceptors.response.use(
     
     // Extract error information from custom error response
     if (error.response?.data?.error) {
-      const customError = new Error(error.response.data.error.message || error.message)
-      customError['errorInfo'] = error.response.data.error
-      customError['retryAllowed'] = error.response.data.retry_allowed
-      customError['escalationAvailable'] = error.response.data.escalation_available
+      const customError = new Error(error.response.data.error.message || error.message) as any
+      customError.errorInfo = error.response.data.error
+      customError.retryAllowed = error.response.data.retry_allowed
+      customError.escalationAvailable = error.response.data.escalation_available
       return Promise.reject(customError)
     }
     
@@ -89,10 +89,7 @@ export interface ChatResponse {
 
 export interface HighlightArea {
   page: number
-  x: number
-  y: number
-  width: number
-  height: number
+  bbox: number[]  // [x1, y1, x2, y2] bounding box coordinates
 }
 
 // Upload payload interface
@@ -271,3 +268,6 @@ export const getDocumentStats = async (): Promise<DocumentStats> => {
   
   return stats
 }
+
+// Default export for api instance
+export default api

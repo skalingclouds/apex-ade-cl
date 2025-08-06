@@ -94,7 +94,7 @@ export default function DocumentReview() {
   })
 
   const parseMutation = useMutation(() => parseDocument(documentId), {
-    onSuccess: (data) => {
+    onSuccess: () => {
       queryClient.invalidateQueries(['document', documentId])
       setShowFieldSelector(true)
     },
@@ -284,6 +284,13 @@ export default function DocumentReview() {
           {canShowExtracted && (
             <>
               <button
+                onClick={() => setShowChat(!showChat)}
+                className="btn btn-primary flex items-center gap-2"
+              >
+                <MessageSquare size={16} />
+                {showChat ? 'Close Chat' : 'Open Chat'}
+              </button>
+              <button
                 onClick={() => handleExportCsv()}
                 disabled={exportingCsv || exportingMarkdown || exportingText}
                 className="btn btn-secondary flex items-center gap-2"
@@ -365,7 +372,7 @@ export default function DocumentReview() {
                 Approve
               </button>
               <button
-                onClick={() => rejectMutation.mutate()}
+                onClick={() => rejectMutation.mutate(undefined)}
                 disabled={rejectMutation.isLoading}
                 className="btn btn-danger flex items-center gap-2"
               >
@@ -373,7 +380,7 @@ export default function DocumentReview() {
                 Reject
               </button>
               <button
-                onClick={() => escalateMutation.mutate()}
+                onClick={() => escalateMutation.mutate(undefined)}
                 disabled={escalateMutation.isLoading}
                 className="btn btn-secondary flex items-center gap-2"
               >
@@ -383,15 +390,6 @@ export default function DocumentReview() {
             </>
           )}
 
-          {canShowExtracted && (
-            <button
-              onClick={() => setShowChat(!showChat)}
-              className="btn btn-secondary flex items-center gap-2"
-            >
-              <MessageSquare size={16} />
-              Chat
-            </button>
-          )}
         </div>
       </div>
 
@@ -428,7 +426,7 @@ export default function DocumentReview() {
               </div>
             )}
             
-            {canShowExtracted && markdownData && (
+            {canShowExtracted && (markdownData || document.extracted_md) && (
               <div className="prose prose-invert max-w-none prose-table:border-collapse prose-td:border prose-td:border-gray-600 prose-th:border prose-th:border-gray-600 prose-th:bg-dark-700 prose-td:p-2 prose-th:p-2">
                 <ReactMarkdown 
                   remarkPlugins={[remarkGfm]}
@@ -498,7 +496,7 @@ export default function DocumentReview() {
                         {children}
                       </li>
                     ),
-                    code: ({children, ...props}) => {
+                    code: ({children}) => {
                       const isInline = !String(children).includes('\n')
                       return isInline ? (
                         <code className="bg-dark-700 px-1 py-0.5 rounded text-accent-green">
@@ -520,7 +518,7 @@ export default function DocumentReview() {
                     )
                   }}
                 >
-                  {prepareMarkdownForDisplay(markdownData.markdown)}
+                  {prepareMarkdownForDisplay(markdownData?.markdown || document.extracted_md || '')}
                 </ReactMarkdown>
               </div>
             )}
@@ -538,7 +536,7 @@ export default function DocumentReview() {
                     retryAllowed={true}
                     escalationAvailable={true}
                     onRetry={() => retryMutation.mutate()}
-                    onEscalate={() => escalateMutation.mutate()}
+                    onEscalate={() => escalateMutation.mutate(undefined)}
                   />
                 </div>
               </div>

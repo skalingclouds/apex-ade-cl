@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from 'react-query'
 import { 
@@ -11,7 +11,7 @@ import {
   ChevronLeft,
   ChevronRight
 } from 'lucide-react'
-import { getDocuments, Document } from '../services/api'
+import { getDocuments } from '../services/api'
 
 interface DocumentSidebarProps {
   isOpen: boolean
@@ -47,7 +47,7 @@ export default function DocumentSidebar({ isOpen, onToggle }: DocumentSidebarPro
   const { id: currentDocId } = useParams<{ id: string }>()
   const currentDocumentId = currentDocId ? parseInt(currentDocId) : null
 
-  const { data, isLoading, refetch } = useQuery(
+  const { data, isLoading } = useQuery(
     'sidebar-documents',
     () => getDocuments(),
     {
@@ -101,11 +101,11 @@ export default function DocumentSidebar({ isOpen, onToggle }: DocumentSidebarPro
                   >
                     <div className="flex items-start gap-3">
                       <div className="mt-0.5">
-                        {statusIcons[doc.status]}
+                        {statusIcons[doc.status.toLowerCase() as keyof typeof statusIcons]}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-medium truncate">{doc.filename}</p>
-                        <p className={`text-sm ${statusColors[doc.status]} capitalize`}>
+                        <p className={`text-sm ${statusColors[doc.status.toLowerCase() as keyof typeof statusColors]} capitalize`}>
                           {doc.status}
                         </p>
                         <p className="text-xs text-gray-500 mt-1">

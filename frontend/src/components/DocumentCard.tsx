@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { FileText, Clock, CheckCircle, XCircle, AlertTriangle } from 'lucide-react'
+import { Clock, CheckCircle, XCircle, AlertTriangle } from 'lucide-react'
 import { Document } from '../services/api'
 import { formatDistanceToNow } from '../utils/date'
 
@@ -8,7 +8,7 @@ interface DocumentCardProps {
 }
 
 export default function DocumentCard({ document }: DocumentCardProps) {
-  const statusConfig = {
+  const statusConfig: Record<string, { icon: any; color: string; bg: string }> = {
     pending: { icon: Clock, color: 'text-gray-400', bg: 'bg-gray-400/10' },
     parsing: { icon: Clock, color: 'text-accent-yellow', bg: 'bg-accent-yellow/10' },
     parsed: { icon: Clock, color: 'text-accent-yellow', bg: 'bg-accent-yellow/10' },
