@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useQuery } from 'react-query'
 import { X, FileText, FileSpreadsheet, FileCode, Copy, Check } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import toast from 'react-hot-toast'
 import PDFViewer from './PDFViewer'
 import { 
@@ -260,17 +262,100 @@ export default function DocumentPreviewModal({ documentId, onClose }: DocumentPr
                     </div>
                     
                     <div className="flex-1 overflow-auto p-4">
-                      {markdownData?.markdown ? (
-                        <div className="prose prose-invert max-w-none">
-                          <pre className="whitespace-pre-wrap font-mono text-sm text-gray-300">
-                            {markdownData.markdown}
-                          </pre>
-                        </div>
-                      ) : (document as any)?.extracted_md ? (
-                        <div className="prose prose-invert max-w-none">
-                          <pre className="whitespace-pre-wrap font-mono text-sm text-gray-300">
-                            {(document as any).extracted_md}
-                          </pre>
+                      {markdownData?.markdown || (document as any)?.extracted_md ? (
+                        <div className="prose prose-invert max-w-none prose-table:border-collapse prose-td:border prose-td:border-gray-600 prose-th:border prose-th:border-gray-600 prose-th:bg-dark-700 prose-td:p-2 prose-th:p-2">
+                          <ReactMarkdown 
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                              table: ({children}) => (
+                                <table className="w-full border-collapse border border-gray-600">
+                                  {children}
+                                </table>
+                              ),
+                              thead: ({children}) => (
+                                <thead className="bg-dark-700">
+                                  {children}
+                                </thead>
+                              ),
+                              tbody: ({children}) => (
+                                <tbody>
+                                  {children}
+                                </tbody>
+                              ),
+                              tr: ({children}) => (
+                                <tr className="border-b border-gray-600">
+                                  {children}
+                                </tr>
+                              ),
+                              th: ({children}) => (
+                                <th className="border border-gray-600 p-2 text-left font-semibold">
+                                  {children}
+                                </th>
+                              ),
+                              td: ({children}) => (
+                                <td className="border border-gray-600 p-2">
+                                  {children}
+                                </td>
+                              ),
+                              p: ({children}) => (
+                                <p className="mb-4">
+                                  {children}
+                                </p>
+                              ),
+                              h1: ({children}) => (
+                                <h1 className="text-2xl font-bold mb-4 text-white">
+                                  {children}
+                                </h1>
+                              ),
+                              h2: ({children}) => (
+                                <h2 className="text-xl font-semibold mb-3 text-white">
+                                  {children}
+                                </h2>
+                              ),
+                              h3: ({children}) => (
+                                <h3 className="text-lg font-semibold mb-2 text-white">
+                                  {children}
+                                </h3>
+                              ),
+                              ul: ({children}) => (
+                                <ul className="list-disc list-inside mb-4">
+                                  {children}
+                                </ul>
+                              ),
+                              ol: ({children}) => (
+                                <ol className="list-decimal list-inside mb-4">
+                                  {children}
+                                </ol>
+                              ),
+                              li: ({children}) => (
+                                <li className="mb-1">
+                                  {children}
+                                </li>
+                              ),
+                              code: ({children}) => {
+                                const isInline = !String(children).includes('\n')
+                                return isInline ? (
+                                  <code className="bg-dark-700 px-1 py-0.5 rounded text-accent-green">
+                                    {children}
+                                  </code>
+                                ) : (
+                                  <code className="block bg-dark-800 p-3 rounded mb-4 overflow-x-auto">
+                                    {children}
+                                  </code>
+                                )
+                              },
+                              blockquote: ({children}) => (
+                                <blockquote className="border-l-4 border-accent-green pl-4 mb-4 italic">
+                                  {children}
+                                </blockquote>
+                              ),
+                              hr: () => (
+                                <hr className="border-gray-600 my-6" />
+                              )
+                            }}
+                          >
+                            {markdownData?.markdown || (document as any)?.extracted_md || ''}
+                          </ReactMarkdown>
                         </div>
                       ) : (
                         <div className="text-center text-gray-500 mt-8">

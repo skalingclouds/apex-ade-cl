@@ -4,7 +4,6 @@ import { useQuery, useMutation, useQueryClient } from 'react-query'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import toast from 'react-hot-toast'
-import { prepareMarkdownForDisplay } from '../utils/enhancedMarkdownUtils'
 import PDFViewer from '../components/PDFViewer'
 import { 
   ChevronLeft, 
@@ -518,7 +517,7 @@ export default function DocumentReview() {
                     )
                   }}
                 >
-                  {prepareMarkdownForDisplay(markdownData?.markdown || document.extracted_md || '')}
+                  {markdownData?.markdown || document.extracted_md || ''}
                 </ReactMarkdown>
               </div>
             )}

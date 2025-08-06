@@ -11,14 +11,14 @@ import {
   Search,
   Filter
 } from 'lucide-react'
-import { getDocuments } from '../services/api'
+import { getDocuments, DocumentListResponse, Document } from '../services/api'
 import { formatDistanceToNow } from '../utils/date'
 
 export default function AllDocuments() {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   
-  const { data, isLoading } = useQuery('all-documents', getDocuments)
+  const { data, isLoading } = useQuery<DocumentListResponse>('all-documents', () => getDocuments(undefined))
 
   const statusConfig = {
     pending: { icon: Clock, color: 'text-gray-400', bg: 'bg-gray-400/10' },
@@ -32,13 +32,13 @@ export default function AllDocuments() {
     failed: { icon: XCircle, color: 'text-accent-red', bg: 'bg-accent-red/10' },
   }
 
-  const filteredDocuments = data?.documents.filter(doc => {
+  const filteredDocuments = data?.documents.filter((doc: Document) => {
     const matchesSearch = doc.filename.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesStatus = statusFilter === 'all' || doc.status.toLowerCase() === statusFilter.toLowerCase()
     return matchesSearch && matchesStatus
   }) || []
 
-  const statusCounts = data?.documents.reduce((acc, doc) => {
+  const statusCounts = data?.documents.reduce((acc: Record<string, number>, doc: Document) => {
     const status = doc.status.toLowerCase()
     acc[status] = (acc[status] || 0) + 1
     return acc
@@ -81,7 +81,7 @@ export default function AllDocuments() {
               <option value="all">All Status ({data?.documents.length || 0})</option>
               {Object.entries(statusCounts).map(([status, count]) => (
                 <option key={status} value={status}>
-                  {status.charAt(0).toUpperCase() + status.slice(1)} ({count})
+                  {status.charAt(0).toUpperCase() + status.slice(1)} ({count as number})
                 </option>
               ))}
             </select>
@@ -100,7 +100,7 @@ export default function AllDocuments() {
                   <Icon size={16} className={config.color} />
                   <span className="text-xs text-gray-400 capitalize">{status}</span>
                 </div>
-                <div className="text-xl font-bold">{count}</div>
+                <div className="text-xl font-bold">{count as number}</div>
               </div>
             )
           })}
@@ -116,7 +116,7 @@ export default function AllDocuments() {
           </div>
         ) : (
           <div className="grid gap-3">
-            {filteredDocuments.map(doc => {
+            {filteredDocuments.map((doc: Document) => {
               const normalizedStatus = doc.status.toLowerCase()
               const config = statusConfig[normalizedStatus as keyof typeof statusConfig] || statusConfig.pending
               const StatusIcon = config.icon
