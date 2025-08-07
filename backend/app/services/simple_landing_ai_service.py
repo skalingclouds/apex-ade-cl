@@ -39,6 +39,7 @@ class ExtractionResult(BaseModel):
     markdown: str
     processed_at: datetime
     extraction_metadata: Optional[Dict[str, Any]] = None
+    metadata: Optional[Dict[str, Any]] = None  # For extraction method tracking
 
 class SimpleLandingAIService:
     def __init__(self):
@@ -508,7 +509,8 @@ class SimpleLandingAIService:
                 return ExtractionResult(
                     data=extracted_data,
                     markdown=markdown_content,
-                    processed_at=datetime.now()
+                    processed_at=datetime.now(),
+                    metadata={"extraction_method": "LANDING_AI_API"}
                 )
             
             # Fallback to old SDK method if API fails
@@ -540,13 +542,16 @@ class SimpleLandingAIService:
                     if markdown_content and OpenAI and settings.OPENAI_API_KEY:
                         logger.info("Using OpenAI to extract fields from markdown")
                         extracted_data = self._extract_fields_using_openai(markdown_content, selected_fields)
+                        extraction_method = "OPENAI_FALLBACK"
                     else:
                         extracted_data = {field: None for field in selected_fields}
+                        extraction_method = "FAILED"
                     
                     return ExtractionResult(
                         data=extracted_data,
                         markdown=markdown_content,
-                        processed_at=datetime.now()
+                        processed_at=datetime.now(),
+                        metadata={"extraction_method": extraction_method}
                     )
                 
                 raise Exception("No results from parse")
@@ -575,9 +580,13 @@ class SimpleLandingAIService:
                     logger.info("Landing.AI only returned full_content, will use OpenAI for specific fields")
                     needs_openai_extraction = True
             
+            # Track which extraction method was ultimately used
+            extraction_method = "LANDING_AI_SDK"  # Default if Landing.AI SDK worked
+            
             if needs_openai_extraction and markdown_content:
                 logger.info("Using OpenAI to extract specific fields from markdown")
                 extracted_data = self._extract_fields_using_openai(markdown_content, selected_fields)
+                extraction_method = "OPENAI_FALLBACK"
             
             # Filter to only include requested fields
             filtered_data = {
@@ -619,10 +628,14 @@ class SimpleLandingAIService:
                 'chunks': chunks_with_telemetry
             }
             
+            # Log which extraction method was used
+            logger.info(f"Extraction completed using method: {extraction_method}")
+            
             return ExtractionResult(
                 data=result_data,
                 markdown=markdown_content,
-                processed_at=datetime.now()
+                processed_at=datetime.now(),
+                metadata={"extraction_method": extraction_method}
             )
             
         except Exception as e:
