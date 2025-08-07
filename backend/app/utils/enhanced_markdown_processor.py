@@ -194,7 +194,15 @@ class LandingAIMarkdownProcessor:
                 if isinstance(data, dict):
                     # Convert dict to CSV rows
                     headers = list(data.keys())
-                    values = [str(v) if v is not None else '' for v in data.values()]
+                    values = []
+                    for v in data.values():
+                        if v is None:
+                            values.append('')
+                        elif isinstance(v, list):
+                            # Join list values with semicolon for CSV compatibility
+                            values.append('; '.join(str(item) for item in v))
+                        else:
+                            values.append(str(v))
                     csv_rows = [headers, values]
                 elif isinstance(data, list) and data:
                     if isinstance(data[0], dict):
@@ -202,7 +210,14 @@ class LandingAIMarkdownProcessor:
                         headers = list(data[0].keys())
                         csv_rows.append(headers)
                         for item in data:
-                            row = [str(item.get(h, '')) for h in headers]
+                            row = []
+                            for h in headers:
+                                value = item.get(h, '')
+                                if isinstance(value, list):
+                                    # Join list values with semicolon for CSV compatibility
+                                    row.append('; '.join(str(v) for v in value))
+                                else:
+                                    row.append(str(value) if value is not None else '')
                             csv_rows.append(row)
             except (json.JSONDecodeError, TypeError):
                 pass
