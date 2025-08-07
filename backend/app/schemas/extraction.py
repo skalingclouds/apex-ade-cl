@@ -18,6 +18,7 @@ class FieldSelection(BaseModel):
 
 class ExtractionRequest(BaseModel):
     selected_fields: List[str]
+    custom_fields: Optional[List[FieldInfo]] = []
 
 class ExtractionResponse(BaseModel):
     success: bool

@@ -1,6 +1,6 @@
 """
 Simplified Landing.AI service that focuses on getting basic extraction working.
-This version provides a more user-friendly field selection based on document content.
+This version provides dynamic field selection based on actual document content using AI analysis.
 """
 
 from typing import List, Dict, Any, Optional
@@ -10,6 +10,8 @@ from pydantic import BaseModel, Field, create_model
 import logging
 import re
 import os
+import json
+import requests
 
 from app.schemas.extraction import ParseResponse, FieldInfo
 from app.core.config import settings
@@ -22,6 +24,14 @@ except ImportError:
     parse = None
     viz_parsed_document = None
 
+# Import OpenAI for dynamic field generation
+try:
+    import openai
+    from openai import OpenAI
+except ImportError:
+    openai = None
+    OpenAI = None
+
 logger = logging.getLogger(__name__)
 
 class ExtractionResult(BaseModel):
@@ -33,6 +43,7 @@ class ExtractionResult(BaseModel):
 class SimpleLandingAIService:
     def __init__(self):
         self.api_key = settings.VISION_AGENT_API_KEY
+        self.api_endpoint = "https://api.va.landing.ai/v1/tools/agentic-document-analysis"
         
         # Ensure the environment variable is set for the SDK
         if self.api_key:
@@ -43,8 +54,92 @@ class SimpleLandingAIService:
     
     def _extract_fields_from_markdown(self, markdown: str) -> List[FieldInfo]:
         """
-        Analyze the markdown to suggest meaningful fields based on content.
-        This is a simple heuristic approach.
+        Use AI to analyze the document content and suggest relevant extraction fields.
+        This provides truly dynamic field generation based on actual document content.
+        """
+        # Try AI-based field generation first
+        if OpenAI and settings.OPENAI_API_KEY:
+            try:
+                return self._extract_fields_using_ai(markdown)
+            except Exception as e:
+                logger.warning(f"AI field generation failed, using fallback: {str(e)}")
+        
+        # Fallback to pattern-based field generation
+        return self._extract_fields_fallback(markdown)
+    
+    def _extract_fields_using_ai(self, markdown: str) -> List[FieldInfo]:
+        """
+        Use OpenAI to analyze document and suggest relevant fields.
+        """
+        client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        
+        # Truncate markdown if too long (keep first 3000 chars for analysis)
+        markdown_sample = markdown[:3000] if len(markdown) > 3000 else markdown
+        
+        prompt = f"""Analyze this document content and suggest relevant fields to extract. 
+        Return a JSON array of field suggestions. Each field should have:
+        - name: snake_case field name (e.g., 'invoice_number', 'total_amount')
+        - type: always 'string' for compatibility
+        - description: brief description of what this field contains
+        - required: always false
+        
+        Analyze the actual content and structure to suggest fields that are actually present in the document.
+        Limit to 12-15 most relevant fields. Focus on extractable data like names, dates, amounts, IDs, addresses, etc.
+        
+        Document content:
+        {markdown_sample}
+        
+        Return ONLY a JSON array, no other text. Example format:
+        [
+            {{"name": "invoice_number", "type": "string", "description": "Invoice or reference number", "required": false}},
+            {{"name": "date", "type": "string", "description": "Document date", "required": false}}
+        ]
+        """
+        
+        response = client.chat.completions.create(
+            model=settings.OPENAI_MODEL or "gpt-4-turbo-preview",
+            messages=[
+                {"role": "system", "content": "You are a document analysis expert. Analyze documents and suggest relevant fields to extract based on the actual content present."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3,  # Lower temperature for more consistent field suggestions
+            max_tokens=1000
+        )
+        
+        # Parse the response
+        fields_json = response.choices[0].message.content.strip()
+        # Clean up the response if it has markdown code blocks
+        if "```json" in fields_json:
+            fields_json = fields_json.split("```json")[1].split("```")[0].strip()
+        elif "```" in fields_json:
+            fields_json = fields_json.split("```")[1].split("```")[0].strip()
+        
+        fields_data = json.loads(fields_json)
+        
+        # Convert to FieldInfo objects
+        fields = []
+        for field_dict in fields_data:
+            fields.append(FieldInfo(
+                name=field_dict.get("name", "field"),
+                type=field_dict.get("type", "string"),
+                description=field_dict.get("description", ""),
+                required=field_dict.get("required", False)
+            ))
+        
+        # Always add a full_content field as the first option
+        fields.insert(0, FieldInfo(
+            name="full_content",
+            type="string",
+            description="Complete document content",
+            required=False
+        ))
+        
+        logger.info(f"AI generated {len(fields)} dynamic fields for document")
+        return fields[:15]  # Limit to 15 fields
+    
+    def _extract_fields_fallback(self, markdown: str) -> List[FieldInfo]:
+        """
+        Fallback method using pattern-based field detection.
         """
         fields = []
         markdown_lower = markdown.lower()
@@ -57,74 +152,50 @@ class SimpleLandingAIService:
             required=False
         ))
         
-        # Check for specific document types and suggest relevant fields
+        # Look for common patterns
+        patterns_found = []
         
-        # Invoice/Financial documents
-        if any(word in markdown_lower for word in ['invoice', 'bill', 'payment', 'total', 'amount', 'price']):
-            fields.extend([
-                FieldInfo(name="invoice_number", type="string", description="Invoice or document number", required=False),
-                FieldInfo(name="date", type="string", description="Date on the document", required=False),
-                FieldInfo(name="total_amount", type="string", description="Total amount or price", required=False),
-                FieldInfo(name="vendor_name", type="string", description="Vendor or company name", required=False),
-                FieldInfo(name="items", type="string", description="List of items or services", required=False),
+        # Check for dates
+        if re.search(r'\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}[/-]\d{1,2}[/-]\d{1,2}|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]* \d{1,2},? \d{4}', markdown_lower):
+            patterns_found.append(FieldInfo(name="dates", type="string", description="Dates found in document", required=False))
+        
+        # Check for money/amounts
+        if re.search(r'\$[\d,]+\.?\d*|usd|eur|gbp|\d+\.\d{2}', markdown_lower):
+            patterns_found.append(FieldInfo(name="amounts", type="string", description="Monetary amounts", required=False))
+        
+        # Check for email addresses
+        if re.search(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', markdown):
+            patterns_found.append(FieldInfo(name="email_addresses", type="string", description="Email addresses", required=False))
+        
+        # Check for phone numbers
+        if re.search(r'[\+]?[(]?[0-9]{3}[)]?[-\s\.]?[0-9]{3}[-\s\.]?[0-9]{4,6}', markdown):
+            patterns_found.append(FieldInfo(name="phone_numbers", type="string", description="Phone numbers", required=False))
+        
+        # Check for specific document types
+        if any(word in markdown_lower for word in ['invoice', 'bill', 'receipt']):
+            patterns_found.extend([
+                FieldInfo(name="invoice_number", type="string", description="Invoice/Bill number", required=False),
+                FieldInfo(name="total_amount", type="string", description="Total amount", required=False),
+                FieldInfo(name="vendor_name", type="string", description="Vendor/Company name", required=False),
             ])
         
-        # Payroll/Employee documents
-        if any(word in markdown_lower for word in ['payroll', 'salary', 'employee', 'wage', 'earnings']):
-            fields.extend([
-                FieldInfo(name="employee_name", type="string", description="Employee name(s)", required=False),
-                FieldInfo(name="pay_period", type="string", description="Pay period dates", required=False),
-                FieldInfo(name="gross_pay", type="string", description="Gross pay or earnings", required=False),
-                FieldInfo(name="net_pay", type="string", description="Net pay amount", required=False),
-                FieldInfo(name="deductions", type="string", description="Deductions and withholdings", required=False),
-            ])
-        
-        # Contract/Legal documents
-        if any(word in markdown_lower for word in ['agreement', 'contract', 'terms', 'party', 'clause']):
-            fields.extend([
+        if any(word in markdown_lower for word in ['contract', 'agreement']):
+            patterns_found.extend([
                 FieldInfo(name="parties", type="string", description="Parties involved", required=False),
                 FieldInfo(name="effective_date", type="string", description="Effective date", required=False),
-                FieldInfo(name="terms", type="string", description="Key terms and conditions", required=False),
-                FieldInfo(name="signatures", type="string", description="Signature information", required=False),
             ])
         
-        # Report/Analysis documents
-        if any(word in markdown_lower for word in ['report', 'analysis', 'summary', 'findings', 'conclusion']):
-            fields.extend([
-                FieldInfo(name="title", type="string", description="Report title", required=False),
-                FieldInfo(name="summary", type="string", description="Executive summary", required=False),
-                FieldInfo(name="key_findings", type="string", description="Key findings or results", required=False),
-                FieldInfo(name="recommendations", type="string", description="Recommendations", required=False),
-            ])
+        # Add pattern-based fields
+        fields.extend(patterns_found)
         
-        # Forms
-        if any(word in markdown_lower for word in ['form', 'application', 'registration', 'name:', 'address:', 'phone:']):
-            fields.extend([
-                FieldInfo(name="applicant_name", type="string", description="Name of applicant", required=False),
-                FieldInfo(name="contact_info", type="string", description="Contact information", required=False),
-                FieldInfo(name="address", type="string", description="Address", required=False),
-                FieldInfo(name="form_date", type="string", description="Form date", required=False),
-            ])
-        
-        # Tables (if markdown contains table syntax)
-        if '<table>' in markdown or '|' in markdown[:1000]:  # Check for table markers
-            fields.append(FieldInfo(
-                name="table_data",
-                type="string",
-                description="Extracted table information",
-                required=False
-            ))
-        
-        # Generic fields as fallback
+        # Generic fields to ensure we have options
         if len(fields) < 5:
             fields.extend([
-                FieldInfo(name="document_title", type="string", description="Document title or heading", required=False),
-                FieldInfo(name="key_information", type="string", description="Key information from document", required=False),
-                FieldInfo(name="dates", type="string", description="Important dates", required=False),
-                FieldInfo(name="numbers", type="string", description="Important numbers or amounts", required=False),
+                FieldInfo(name="key_information", type="string", description="Key information", required=False),
+                FieldInfo(name="summary", type="string", description="Document summary", required=False),
             ])
         
-        # Remove duplicates based on field name
+        # Remove duplicates
         seen = set()
         unique_fields = []
         for field in fields:
@@ -132,7 +203,145 @@ class SimpleLandingAIService:
                 seen.add(field.name)
                 unique_fields.append(field)
         
-        return unique_fields[:15]  # Limit to 15 fields for UI clarity
+        return unique_fields[:15]
+    
+    def _extract_fields_using_openai(self, markdown: str, selected_fields: List[str]) -> Dict[str, Any]:
+        """
+        Use OpenAI to extract specific fields from the markdown content.
+        """
+        if not OpenAI or not settings.OPENAI_API_KEY:
+            logger.warning("OpenAI not available for field extraction")
+            return {field: None for field in selected_fields}
+        
+        try:
+            client = OpenAI(api_key=settings.OPENAI_API_KEY)
+            
+            # Prepare field descriptions for the prompt
+            fields_desc = "\n".join([f"- {field}: Extract the {field.replace('_', ' ')}" for field in selected_fields])
+            
+            prompt = f"""Extract the following specific fields from this document. 
+            Return a JSON object with the exact field names as keys.
+            If a field cannot be found, set its value to null.
+            
+            Fields to extract:
+            {fields_desc}
+            
+            Document content:
+            {markdown[:4000]}
+            
+            Return ONLY a valid JSON object with the requested fields. Example:
+            {{
+                "field_name": "extracted value",
+                "another_field": "another value"
+            }}
+            """
+            
+            response = client.chat.completions.create(
+                model=settings.OPENAI_MODEL or "gpt-4-turbo-preview",
+                messages=[
+                    {"role": "system", "content": "You are a data extraction expert. Extract specific fields from documents and return them as JSON."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.1,  # Low temperature for accurate extraction
+                max_tokens=1500
+            )
+            
+            # Parse the response
+            extracted_json = response.choices[0].message.content.strip()
+            # Clean up the response if it has markdown code blocks
+            if "```json" in extracted_json:
+                extracted_json = extracted_json.split("```json")[1].split("```")[0].strip()
+            elif "```" in extracted_json:
+                extracted_json = extracted_json.split("```")[1].split("```")[0].strip()
+            
+            extracted_data = json.loads(extracted_json)
+            
+            # Ensure all requested fields are present
+            for field in selected_fields:
+                if field not in extracted_data:
+                    extracted_data[field] = None
+            
+            logger.info(f"OpenAI extracted fields: {list(extracted_data.keys())}")
+            return extracted_data
+            
+        except Exception as e:
+            logger.error(f"OpenAI extraction failed: {str(e)}")
+            return {field: None for field in selected_fields}
+    
+    def _create_json_schema_from_fields(self, selected_fields: List[str], custom_field_descriptions: Dict[str, str] = {}) -> Dict:
+        """
+        Create a JSON Schema from selected fields for Landing.AI API.
+        """
+        properties = {}
+        for field in selected_fields:
+            # Get description from custom fields or generate one
+            description = custom_field_descriptions.get(field, f"Extract the {field.replace('_', ' ')}")
+            
+            properties[field] = {
+                "type": "string",
+                "title": field.replace('_', ' ').title(),
+                "description": description
+            }
+        
+        schema = {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "title": "Document Extraction Schema",
+            "description": "Schema for extracting selected fields from document",
+            "type": "object",
+            "properties": properties,
+            "required": []  # Make all fields optional
+        }
+        
+        return schema
+    
+    async def _extract_using_landing_ai_api(self, file_path: str, selected_fields: List[str], custom_field_descriptions: Dict[str, str] = {}) -> Optional[Dict[str, Any]]:
+        """
+        Use Landing.AI's agentic-document-analysis API endpoint for extraction.
+        """
+        if not self.api_key:
+            logger.warning("No Landing.AI API key available")
+            return None
+        
+        try:
+            # Create JSON schema from fields
+            schema = self._create_json_schema_from_fields(selected_fields, custom_field_descriptions)
+            logger.info(f"Created JSON schema for Landing.AI: {json.dumps(schema, indent=2)}")
+            
+            # Prepare the request
+            headers = {"Authorization": f"Basic {self.api_key}"}
+            
+            # Open the file and prepare for upload
+            with open(file_path, 'rb') as pdf_file:
+                files = [
+                    ("pdf", (os.path.basename(file_path), pdf_file, "application/pdf"))
+                ]
+                payload = {"fields_schema": json.dumps(schema)}
+                
+                # Make the API request
+                response = requests.post(
+                    self.api_endpoint,
+                    headers=headers,
+                    files=files,
+                    data=payload,
+                    timeout=60  # 60 second timeout
+                )
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    if "data" in result and "extracted_schema" in result["data"]:
+                        extracted_data = result["data"]["extracted_schema"]
+                        logger.info(f"Landing.AI API extracted: {list(extracted_data.keys())}")
+                        return extracted_data
+                    else:
+                        logger.warning(f"Unexpected response structure from Landing.AI: {result}")
+                        return None
+                else:
+                    logger.error(f"Landing.AI API error: {response.status_code} - {response.text}")
+                    return None
+                    
+        except Exception as e:
+            logger.error(f"Landing.AI API extraction failed: {str(e)}")
+            return None
     
     async def parse_document(self, file_path: str) -> ParseResponse:
         """
@@ -192,9 +401,11 @@ class SimpleLandingAIService:
     ) -> ExtractionResult:
         """
         Extract data from document using provided schema.
+        First tries Landing.AI extraction, then falls back to OpenAI extraction.
         """
         logger.info(f"Extracting from document: {file_path}")
         logger.info(f"Selected fields: {selected_fields}")
+        logger.info(f"Schema model fields: {schema_model.__fields__.keys()}")
         
         if parse is None:
             # Mock response with chunk telemetry for development
@@ -225,7 +436,45 @@ class SimpleLandingAIService:
             )
         
         try:
-            # Run extraction with the schema
+            # First try using Landing.AI API with JSON schema
+            logger.info("Attempting extraction with Landing.AI API")
+            
+            # Get custom field descriptions from schema model if available
+            custom_descriptions = {}
+            for field_name, field_info in schema_model.__fields__.items():
+                if hasattr(field_info, 'description') and field_info.description:
+                    custom_descriptions[field_name] = field_info.description
+            
+            extracted_data = await self._extract_using_landing_ai_api(
+                file_path, 
+                selected_fields, 
+                custom_descriptions
+            )
+            
+            if extracted_data:
+                logger.info("Landing.AI API extraction successful")
+                # Get markdown if not already extracted
+                loop = asyncio.get_event_loop()
+                result = await loop.run_in_executor(
+                    None,
+                    lambda: parse(
+                        documents=[file_path],
+                        include_marginalia=True,
+                        include_metadata_in_markdown=True
+                    )
+                )
+                markdown_content = ""
+                if result and len(result) > 0:
+                    markdown_content = getattr(result[0], 'markdown', '')
+                
+                return ExtractionResult(
+                    data=extracted_data,
+                    markdown=markdown_content,
+                    processed_at=datetime.now()
+                )
+            
+            # Fallback to old SDK method if API fails
+            logger.info("Landing.AI API failed, falling back to SDK")
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(
                 None,
@@ -236,7 +485,8 @@ class SimpleLandingAIService:
             )
             
             if not result or len(result) == 0:
-                # If extraction fails, still return the markdown
+                # If extraction with schema fails, try to get markdown without schema
+                logger.info("Extraction with schema failed, trying to get markdown only")
                 result = await loop.run_in_executor(
                     None,
                     lambda: parse(
@@ -248,9 +498,15 @@ class SimpleLandingAIService:
                 
                 if result and len(result) > 0:
                     markdown_content = getattr(result[0], 'markdown', '')
-                    empty_data = {field: None for field in selected_fields}
+                    # Use OpenAI to extract fields from markdown
+                    if markdown_content and OpenAI and settings.OPENAI_API_KEY:
+                        logger.info("Using OpenAI to extract fields from markdown")
+                        extracted_data = self._extract_fields_using_openai(markdown_content, selected_fields)
+                    else:
+                        extracted_data = {field: None for field in selected_fields}
+                    
                     return ExtractionResult(
-                        data=empty_data,
+                        data=extracted_data,
                         markdown=markdown_content,
                         processed_at=datetime.now()
                     )
@@ -259,18 +515,37 @@ class SimpleLandingAIService:
             
             parsed_doc = result[0]
             
-            # Get extracted data if available
+            # Always try to get markdown first
+            markdown_content = getattr(parsed_doc, 'markdown', '')
+            
+            # Get extracted data if available from Landing.AI
+            extracted_data = {}
             if hasattr(parsed_doc, 'extraction') and parsed_doc.extraction:
                 extracted_data = parsed_doc.extraction.model_dump()
-                filtered_data = {
-                    field: extracted_data.get(field, None) 
-                    for field in selected_fields
-                }
-            else:
-                filtered_data = {field: None for field in selected_fields}
+                logger.info(f"Landing.AI extracted data keys: {list(extracted_data.keys())}")
             
-            # Always try to get markdown
-            markdown_content = getattr(parsed_doc, 'markdown', '')
+            # Check if Landing.AI extraction was successful for the selected fields
+            # If not, use OpenAI to extract the specific fields
+            needs_openai_extraction = False
+            if not extracted_data:
+                logger.info("No extraction data from Landing.AI, will use OpenAI")
+                needs_openai_extraction = True
+            else:
+                # Check if we got meaningful data (not just full_content)
+                non_null_fields = [k for k, v in extracted_data.items() if v is not None and k != 'full_content']
+                if len(non_null_fields) == 0:
+                    logger.info("Landing.AI only returned full_content, will use OpenAI for specific fields")
+                    needs_openai_extraction = True
+            
+            if needs_openai_extraction and markdown_content:
+                logger.info("Using OpenAI to extract specific fields from markdown")
+                extracted_data = self._extract_fields_using_openai(markdown_content, selected_fields)
+            
+            # Filter to only include requested fields
+            filtered_data = {
+                field: extracted_data.get(field, None) 
+                for field in selected_fields
+            }
             
             # Extract chunk telemetry with bounding boxes if available
             chunks_with_telemetry = []
