@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite:///./apex_ade.db"
     
     # File upload settings
-    MAX_UPLOAD_SIZE: int = 52428800  # 50MB
+    MAX_UPLOAD_SIZE: int = 1073741824  # 1GB - supports large PDFs (900MB+)
     UPLOAD_DIRECTORY: str = "./uploads"
     
     # Security
