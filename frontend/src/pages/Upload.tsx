@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useState, useEffect } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { useMutation, useQueryClient } from 'react-query'
 import { useNavigate } from 'react-router-dom'
@@ -75,17 +75,28 @@ export default function Upload() {
     })
   }, [uploadMutation])
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+  const { getRootProps, getInputProps, isDragActive, fileRejections } = useDropzone({
     onDrop,
     accept: {
       'application/pdf': ['.pdf'],
     },
-    maxSize: 52428800, // 50MB
+    // Remove file size limit to support large PDFs (900MB+)
+    // Backend will handle chunking for processing
   })
 
   const removeFile = (fileId: string) => {
     setFiles((prev) => prev.filter((f) => f.id !== fileId))
   }
+
+  // Handle file rejections
+  useEffect(() => {
+    if (fileRejections.length > 0) {
+      fileRejections.forEach((rejection) => {
+        const errors = rejection.errors.map(e => e.message).join(', ')
+        toast.error(`File rejected: ${rejection.file.name} - ${errors}`)
+      })
+    }
+  }, [fileRejections])
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -114,7 +125,7 @@ export default function Upload() {
             <>
               <p className="text-lg mb-2">Drag & drop PDF files here</p>
               <p className="text-sm text-gray-400">or click to select files</p>
-              <p className="text-xs text-gray-500 mt-4">Maximum file size: 50MB</p>
+              <p className="text-xs text-gray-500 mt-4">Supports large PDFs (900MB+) with automatic chunking</p>
             </>
           )}
         </div>
