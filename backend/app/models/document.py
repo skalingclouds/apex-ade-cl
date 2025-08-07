@@ -43,7 +43,7 @@ class Document(Base):
     completed_chunks = Column(Integer, default=0)
     file_size_mb = Column(Float)
     page_count = Column(Integer)
-    chunk_size = Column(Integer, default=25)  # Pages per chunk
+    chunk_size = Column(Integer, default=40)  # Pages per chunk (optimized for paid plan)
     processing_strategy = Column(String, default="SEQUENTIAL")  # SEQUENTIAL, PARALLEL, ADAPTIVE
     
     # Relationships

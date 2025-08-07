@@ -69,8 +69,8 @@ class ChunkProcessor:
         self.db = db
         self.landing_ai_service = SimpleLandingAIService()
         
-        # Rate limiters for different APIs
-        self.landing_ai_limiter = RateLimiter(max_rpm=10)  # Landing.AI: 10 requests/minute
+        # Rate limiters for different APIs (Paid plan limits)
+        self.landing_ai_limiter = RateLimiter(max_rpm=25)  # Landing.AI Paid: 25 requests/minute
         self.openai_limiter = RateLimiter(max_rpm=50)  # OpenAI: 50 requests/minute
         
         # Retry configuration

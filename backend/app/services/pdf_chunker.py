@@ -22,17 +22,22 @@ class PDFChunker:
     """
     Intelligent PDF chunking service that splits large documents
     into smaller, processable chunks while maintaining consistency
+    
+    Optimized for Landing.AI Paid Plan:
+    - API/Library extraction limit: 50 pages per request
+    - Default chunk size: 40 pages (safe margin under 50-page limit)
+    - Rate limit: 25 requests/minute
     """
     
     def __init__(self, 
-                 max_pages_per_chunk: int = 25,
-                 max_chunk_size_mb: float = 10.0,
+                 max_pages_per_chunk: int = 40,  # Increased for paid plan (50 page limit)
+                 max_chunk_size_mb: float = 15.0,  # Increased for larger chunks
                  chunk_overlap: int = 0):
         """
         Initialize PDF Chunker
         
         Args:
-            max_pages_per_chunk: Maximum pages in a single chunk
+            max_pages_per_chunk: Maximum pages in a single chunk (default 40 for paid plan)
             max_chunk_size_mb: Maximum file size for a chunk in MB
             chunk_overlap: Number of pages to overlap between chunks (for context)
         """
@@ -269,6 +274,11 @@ class PDFChunker:
         Dynamically calculate optimal chunk size based on document characteristics
         and system performance
         
+        Optimized for Landing.AI Paid Plan:
+        - Hard limit: 50 pages (API/Library extraction limit)
+        - Sweet spot: 30-40 pages for most documents
+        - Adjust down for heavy pages or slow API response
+        
         Args:
             document: Document being processed
             current_performance: Current processing metrics (API response times, etc.)
@@ -276,27 +286,27 @@ class PDFChunker:
         Returns:
             Optimal number of pages per chunk
         """
-        base_size = self.max_pages_per_chunk
+        base_size = self.max_pages_per_chunk  # Default 40 for paid plan
         
         # Adjust based on file size
         if document.file_size_mb and document.page_count:
             avg_page_size_mb = document.file_size_mb / document.page_count
             
             if avg_page_size_mb > 0.5:  # Heavy pages (lots of images/content)
-                base_size = min(base_size, 15)
+                base_size = min(base_size, 25)  # Reduce for heavy pages
             elif avg_page_size_mb > 1.0:  # Very heavy pages
-                base_size = min(base_size, 10)
+                base_size = min(base_size, 15)  # Further reduction
         
         # Adjust based on current performance
         if current_performance:
             avg_response_time = current_performance.get('avg_api_response_ms', 0)
-            if avg_response_time > 10000:  # API is slow (>10 seconds)
+            if avg_response_time > 15000:  # API is slow (>15 seconds)
+                base_size = min(base_size, 25)
+            elif avg_response_time > 30000:  # API is very slow (>30 seconds)
                 base_size = min(base_size, 15)
-            elif avg_response_time > 20000:  # API is very slow (>20 seconds)
-                base_size = min(base_size, 10)
         
-        # Never go below 5 pages (too granular) or above 50 (too large)
-        return max(5, min(base_size, 50))
+        # Paid plan limits: minimum 10 pages (efficient), maximum 45 (safety margin)
+        return max(10, min(base_size, 45))
     
     async def cleanup_chunks(self, document_id: int):
         """
