@@ -181,9 +181,14 @@ export const parseDocument = async (id: number): Promise<ParseResponse> => {
   return response.data
 }
 
-export const extractDocument = async (id: number, selectedFields: string[]): Promise<ExtractionResponse> => {
+export const extractDocument = async (
+  id: number, 
+  selectedFields: string[], 
+  customFields?: FieldInfo[]
+): Promise<ExtractionResponse> => {
   const response = await api.post(`/documents/${id}/extract`, {
     selected_fields: selectedFields,
+    custom_fields: customFields || []
   })
   return response.data
 }

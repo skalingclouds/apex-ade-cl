@@ -9,6 +9,7 @@ import logging
 from app.core.database import get_db
 from app.models.document import Document, DocumentStatus
 from app.models.extraction_schema import ExtractionSchema
+from app.models.custom_field import CustomField
 from app.schemas.extraction import ParseResponse, ExtractionRequest, ExtractionResponse, FieldInfo
 from app.services.landing_ai_service import LandingAIService
 from app.services.simple_landing_ai_service import SimpleLandingAIService
@@ -113,15 +114,45 @@ async def extract_document_data(
     document.status = DocumentStatus.EXTRACTING
     db.commit()
     
-    # Create dynamic Pydantic model based on selected fields
+    # Create dynamic Pydantic model based on selected fields and custom fields
     # Since Landing.AI will try to extract whatever it can, make all fields optional strings
     from typing import Optional
     from pydantic import Field
     
     field_definitions = {}
+    
+    # Add custom fields to the extraction model and save them to database
+    if extraction_request.custom_fields:
+        for custom_field in extraction_request.custom_fields:
+            field_definitions[custom_field.name] = (
+                Optional[str], 
+                Field(None, description=custom_field.description or f"Custom field: {custom_field.name}")
+            )
+            
+            # Save or update custom field in database for future reuse
+            existing_field = db.query(CustomField).filter(
+                CustomField.name == custom_field.name
+            ).first()
+            
+            if existing_field:
+                existing_field.usage_count += 1
+                existing_field.description = custom_field.description or existing_field.description
+            else:
+                new_custom_field = CustomField(
+                    name=custom_field.name,
+                    type=custom_field.type,
+                    description=custom_field.description,
+                    usage_count=1
+                )
+                db.add(new_custom_field)
+        
+        db.commit()
+    
+    # Add regular selected fields
     for field_name in extraction_request.selected_fields:
-        # All fields are optional strings for flexibility
-        field_definitions[field_name] = (Optional[str], Field(None, description=f"Field: {field_name}"))
+        # Skip if already added as custom field
+        if field_name not in field_definitions:
+            field_definitions[field_name] = (Optional[str], Field(None, description=f"Field: {field_name}"))
     
     DynamicModel = create_model('DynamicExtractionModel', **field_definitions)
     
@@ -279,3 +310,26 @@ async def retry_extraction(
     )
     
     return await extract_document_data(document_id, extraction_req, background_tasks, request, db)
+
+@router.get("/custom-fields")
+def get_custom_fields(
+    db: Session = Depends(get_db),
+    limit: int = 10
+):
+    """Get frequently used custom fields for suggestions"""
+    custom_fields = db.query(CustomField).filter(
+        CustomField.is_active == True
+    ).order_by(CustomField.usage_count.desc()).limit(limit).all()
+    
+    return {
+        "custom_fields": [
+            {
+                "name": field.name,
+                "type": field.type,
+                "description": field.description,
+                "usage_count": field.usage_count,
+                "required": False
+            }
+            for field in custom_fields
+        ]
+    }

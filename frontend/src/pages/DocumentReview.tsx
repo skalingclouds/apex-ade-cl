@@ -27,7 +27,8 @@ import {
   exportDocumentMarkdown,
   exportDocumentText,
   getDocumentMarkdown,
-  retryExtraction
+  retryExtraction,
+  FieldInfo
 } from '../services/api'
 import Chat from '../components/Chat'
 import FieldSelector from '../components/FieldSelector'
@@ -105,7 +106,8 @@ export default function DocumentReview() {
   })
 
   const extractMutation = useMutation(
-    (selectedFields: string[]) => extractDocument(documentId, selectedFields),
+    ({ selectedFields, customFields }: { selectedFields: string[], customFields?: FieldInfo[] }) => 
+      extractDocument(documentId, selectedFields, customFields),
     {
       onSuccess: () => {
         queryClient.invalidateQueries(['document', documentId])
@@ -558,7 +560,7 @@ export default function DocumentReview() {
       {showFieldSelector && parseMutation.data && (
         <FieldSelector
           fields={parseMutation.data.fields}
-          onSelect={(fields) => extractMutation.mutate(fields)}
+          onSelect={(fields, customFields) => extractMutation.mutate({ selectedFields: fields, customFields })}
           onClose={() => setShowFieldSelector(false)}
           isLoading={extractMutation.isLoading}
         />
