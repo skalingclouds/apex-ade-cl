@@ -15,8 +15,7 @@ from app.models.document_chunk import (
     DocumentChunk, ChunkStatus, ProcessingLog, 
     ProcessingMetrics, ExtractionMethod
 )
-from app.services.simple_landing_ai_service import SimpleLandingAIService
-from app.schemas.extraction import ExtractionResult
+from app.services.simple_landing_ai_service import SimpleLandingAIService, ExtractionResult
 
 logger = logging.getLogger(__name__)
 
