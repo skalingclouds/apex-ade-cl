@@ -34,6 +34,25 @@ interface DocumentListResponse {
 
 type TabType = 'approved' | 'rejected' | 'escalated'
 
+// Helper function to format timestamps with UTC and Pacific time
+const formatTimestamp = (timestamp: string) => {
+  const date = new Date(timestamp)
+  
+  
+  // Pacific time (PST/PDT)
+  const pacificTime = date.toLocaleString('en-US', {
+    timeZone: 'America/Los_Angeles',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  })
+  
+  return `${pacificTime} PST/PDT (${date.toISOString().slice(11, 16)} UTC)`
+}
+
 export default function DocumentManagement() {
   const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState<TabType>('approved')
@@ -317,9 +336,9 @@ export default function DocumentManagement() {
                 >
                   <div className="font-medium">{doc.filename}</div>
                   <div className="text-xs text-gray-400 mt-1">
-                    Uploaded: {new Date(doc.uploaded_at).toLocaleDateString()}
-                    {doc.processed_at && ` • Processed: ${new Date(doc.processed_at).toLocaleDateString()}`}
-                    {doc.archived && doc.archived_at && ` • Archived: ${new Date(doc.archived_at).toLocaleDateString()}`}
+                    Uploaded: {formatTimestamp(doc.uploaded_at)}
+                    {doc.processed_at && ` • Processed: ${formatTimestamp(doc.processed_at)}`}
+                    {doc.archived && doc.archived_at && ` • Archived: ${formatTimestamp(doc.archived_at)}`}
                   </div>
                 </button>
                 

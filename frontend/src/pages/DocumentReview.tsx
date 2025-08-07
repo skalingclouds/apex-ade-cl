@@ -427,7 +427,42 @@ export default function DocumentReview() {
               </div>
             )}
             
-            {canShowExtracted && (markdownData || document.extracted_md) && (
+            {canShowExtracted && document.extracted_data && (
+              <div className="mb-6">
+                <div className="bg-dark-700 rounded-lg p-4">
+                  <h3 className="text-sm font-semibold text-gray-300 mb-3">Extracted Fields</h3>
+                  <div className="space-y-2">
+                    {Object.entries(typeof document.extracted_data === 'string' ? 
+                      JSON.parse(document.extracted_data) : document.extracted_data)
+                      .filter(([key]) => key !== 'chunks' && key !== 'full_content')
+                      .map(([key, value]) => (
+                        <div key={key} className="flex">
+                          <span className="text-gray-400 min-w-[150px]">{key.replace(/_/g, ' ')}:</span>
+                          <span className="text-white">
+                            {Array.isArray(value) ? (
+                              value.length > 0 ? (
+                                <div className="space-y-1">
+                                  {value.map((item, index) => (
+                                    <div key={index} className="pl-2">
+                                      • {String(item)}
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : '(empty)'
+                            ) : String(value || '(empty)')}
+                          </span>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {canShowExtracted && (markdownData || document.extracted_md) && 
+             (!document.extracted_data || Object.keys(typeof document.extracted_data === 'string' ? 
+              JSON.parse(document.extracted_data || '{}') : (document.extracted_data || {})).length === 0 || 
+              Object.keys(typeof document.extracted_data === 'string' ? 
+               JSON.parse(document.extracted_data || '{}') : (document.extracted_data || {})).every(k => k === 'full_content' || k === 'chunks')) && (
               <div className="prose prose-invert max-w-none prose-table:border-collapse prose-td:border prose-td:border-gray-600 prose-th:border prose-th:border-gray-600 prose-th:bg-dark-700 prose-td:p-2 prose-th:p-2">
                 <ReactMarkdown 
                   remarkPlugins={[remarkGfm]}
