@@ -208,6 +208,7 @@ class SimpleLandingAIService:
     def _extract_fields_using_openai(self, markdown: str, selected_fields: List[str]) -> Dict[str, Any]:
         """
         Use OpenAI to extract specific fields from the markdown content.
+        Handles both single and multiple value extraction.
         """
         if not OpenAI or not settings.OPENAI_API_KEY:
             logger.warning("OpenAI not available for field extraction")
@@ -216,34 +217,49 @@ class SimpleLandingAIService:
         try:
             client = OpenAI(api_key=settings.OPENAI_API_KEY)
             
+            # Determine which fields should return arrays
+            multi_value_keywords = ['id', 'number', 'code', 'reference', 'date', 'email', 'phone', 
+                                   'address', 'name', 'amount', 'item', 'line', 'entry', 'record']
+            
             # Prepare field descriptions for the prompt
-            fields_desc = "\n".join([f"- {field}: Extract the {field.replace('_', ' ')}" for field in selected_fields])
+            fields_desc = []
+            for field in selected_fields:
+                field_lower = field.lower()
+                is_multi = any(keyword in field_lower for keyword in multi_value_keywords)
+                if is_multi:
+                    fields_desc.append(f"- {field}: Extract ALL {field.replace('_', ' ')} values as an array. If multiple occurrences exist across pages, include all of them")
+                else:
+                    fields_desc.append(f"- {field}: Extract the {field.replace('_', ' ')} as a single value")
+            
+            fields_desc_str = "\n".join(fields_desc)
             
             prompt = f"""Extract the following specific fields from this document. 
             Return a JSON object with the exact field names as keys.
-            If a field cannot be found, set its value to null.
+            For fields that should be arrays, return ALL occurrences found throughout the document.
+            If a field cannot be found, set its value to null (or empty array [] for array fields).
             
             Fields to extract:
-            {fields_desc}
+            {fields_desc_str}
             
             Document content:
-            {markdown[:4000]}
+            {markdown[:6000]}  # Increased to capture more content
             
             Return ONLY a valid JSON object with the requested fields. Example:
             {{
-                "field_name": "extracted value",
-                "another_field": "another value"
+                "apex_id": ["ID001", "ID002", "ID003"],  // array for multiple values
+                "title": "Document Title",  // single value
+                "dates": ["2024-01-01", "2024-02-01"]  // array for multiple dates
             }}
             """
             
             response = client.chat.completions.create(
                 model=settings.OPENAI_MODEL or "gpt-4-turbo-preview",
                 messages=[
-                    {"role": "system", "content": "You are a data extraction expert. Extract specific fields from documents and return them as JSON."},
+                    {"role": "system", "content": "You are a data extraction expert. Extract specific fields from documents and return them as JSON. When a field appears multiple times in the document, return ALL occurrences as an array."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.1,  # Low temperature for accurate extraction
-                max_tokens=1500
+                max_tokens=2000  # Increased for larger arrays
             )
             
             # Parse the response
@@ -259,7 +275,9 @@ class SimpleLandingAIService:
             # Ensure all requested fields are present
             for field in selected_fields:
                 if field not in extracted_data:
-                    extracted_data[field] = None
+                    field_lower = field.lower()
+                    is_multi = any(keyword in field_lower for keyword in multi_value_keywords)
+                    extracted_data[field] = [] if is_multi else None
             
             logger.info(f"OpenAI extracted fields: {list(extracted_data.keys())}")
             return extracted_data
@@ -271,17 +289,37 @@ class SimpleLandingAIService:
     def _create_json_schema_from_fields(self, selected_fields: List[str], custom_field_descriptions: Dict[str, str] = {}) -> Dict:
         """
         Create a JSON Schema from selected fields for Landing.AI API.
+        Fields that typically have multiple values (IDs, numbers, dates, emails) are defined as arrays.
         """
         properties = {}
         for field in selected_fields:
             # Get description from custom fields or generate one
-            description = custom_field_descriptions.get(field, f"Extract the {field.replace('_', ' ')}")
+            description = custom_field_descriptions.get(field, f"Extract all {field.replace('_', ' ')} values from the document")
             
-            properties[field] = {
-                "type": "string",
-                "title": field.replace('_', ' ').title(),
-                "description": description
-            }
+            # Determine if this field should support multiple values
+            # Fields containing these keywords typically appear multiple times in documents
+            multi_value_keywords = ['id', 'number', 'code', 'reference', 'date', 'email', 'phone', 
+                                   'address', 'name', 'amount', 'item', 'line', 'entry', 'record']
+            
+            field_lower = field.lower()
+            should_be_array = any(keyword in field_lower for keyword in multi_value_keywords)
+            
+            if should_be_array:
+                # Define as array to capture all occurrences
+                properties[field] = {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "title": field.replace('_', ' ').title(),
+                    "description": description + " (all occurrences)",
+                    "uniqueItems": True  # Avoid duplicate values
+                }
+            else:
+                # Single value field
+                properties[field] = {
+                    "type": "string",
+                    "title": field.replace('_', ' ').title(),
+                    "description": description
+                }
         
         schema = {
             "$schema": "https://json-schema.org/draft/2020-12/schema",

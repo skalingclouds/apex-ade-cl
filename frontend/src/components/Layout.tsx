@@ -1,19 +1,14 @@
 import { Outlet, NavLink } from 'react-router-dom'
 import { FileText, Upload, LayoutDashboard, Sun, Moon, BarChart3, Archive } from 'lucide-react'
-import { useState } from 'react'
+import { useTheme } from '../contexts/ThemeContext'
 
 export default function Layout() {
-  const [darkMode, setDarkMode] = useState(true)
-
-  const toggleDarkMode = () => {
-    setDarkMode(!darkMode)
-    document.documentElement.classList.toggle('dark')
-  }
+  const { theme, toggleTheme } = useTheme()
 
   return (
     <div className="min-h-screen flex">
       {/* Sidebar */}
-      <aside className="w-64 bg-dark-800 border-r border-dark-600">
+      <aside className="w-64 bg-dark-800 dark:bg-dark-800 bg-white border-r border-dark-600 dark:border-dark-600 border-gray-200">
         <div className="p-6">
           <h1 className="text-2xl font-bold text-accent-green">Apex ADE</h1>
           <p className="text-sm text-gray-400 mt-1">Advanced Document Extraction</p>
@@ -104,10 +99,11 @@ export default function Layout() {
           </div>
           
           <button
-            onClick={toggleDarkMode}
-            className="p-2 rounded-lg hover:bg-dark-700 transition-colors"
+            onClick={toggleTheme}
+            className="p-2 rounded-lg hover:bg-dark-700 dark:hover:bg-dark-700 hover:bg-gray-200 transition-colors"
+            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
           >
-            {darkMode ? <Sun size={20} /> : <Moon size={20} />}
+            {theme === 'dark' ? <Sun size={20} className="text-yellow-400" /> : <Moon size={20} className="text-blue-600" />}
           </button>
         </header>
 
