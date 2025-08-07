@@ -475,46 +475,14 @@ class SimpleLandingAIService:
             )
         
         try:
-            # First try using Landing.AI API with JSON schema
-            logger.info("Attempting extraction with Landing.AI API")
+            # First try using Landing.AI SDK/Library (unlimited pages for parsing, 50 for extraction)
+            logger.info("Attempting extraction with Landing.AI SDK/Library (preferred for paid plan)")
             
             # Get custom field descriptions from schema model if available
             custom_descriptions = {}
             for field_name, field_info in schema_model.__fields__.items():
                 if hasattr(field_info, 'description') and field_info.description:
                     custom_descriptions[field_name] = field_info.description
-            
-            extracted_data = await self._extract_using_landing_ai_api(
-                file_path, 
-                selected_fields, 
-                custom_descriptions
-            )
-            
-            if extracted_data:
-                logger.info("Landing.AI API extraction successful")
-                # Get markdown if not already extracted
-                loop = asyncio.get_event_loop()
-                result = await loop.run_in_executor(
-                    None,
-                    lambda: parse(
-                        documents=[file_path],
-                        include_marginalia=True,
-                        include_metadata_in_markdown=True
-                    )
-                )
-                markdown_content = ""
-                if result and len(result) > 0:
-                    markdown_content = getattr(result[0], 'markdown', '')
-                
-                return ExtractionResult(
-                    data=extracted_data,
-                    markdown=markdown_content,
-                    processed_at=datetime.now(),
-                    metadata={"extraction_method": "LANDING_AI_API"}
-                )
-            
-            # Fallback to old SDK method if API fails
-            logger.info("Landing.AI API failed, falling back to SDK")
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(
                 None,

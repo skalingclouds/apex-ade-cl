@@ -107,7 +107,7 @@ def upgrade():
     op.execute("UPDATE documents SET is_chunked = 0 WHERE is_chunked IS NULL")
     op.execute("UPDATE documents SET total_chunks = 0 WHERE total_chunks IS NULL")
     op.execute("UPDATE documents SET completed_chunks = 0 WHERE completed_chunks IS NULL")
-    op.execute("UPDATE documents SET chunk_size = 25 WHERE chunk_size IS NULL")
+    op.execute("UPDATE documents SET chunk_size = 40 WHERE chunk_size IS NULL")
     op.execute("UPDATE documents SET processing_strategy = 'SEQUENTIAL' WHERE processing_strategy IS NULL")
 
 def downgrade():
