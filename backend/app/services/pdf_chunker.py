@@ -44,7 +44,7 @@ class PDFChunker:
         self.max_pages_per_chunk = max_pages_per_chunk
         self.max_chunk_size_mb = max_chunk_size_mb
         self.chunk_overlap = chunk_overlap
-        self.upload_dir = Path(settings.UPLOAD_DIR)
+        self.upload_dir = Path(settings.UPLOAD_DIRECTORY)
         self.chunks_dir = self.upload_dir / "chunks"
         self.chunks_dir.mkdir(exist_ok=True)
     
@@ -79,13 +79,15 @@ class PDFChunker:
     
     async def create_chunks(self, 
                           document: Document, 
-                          db: Session) -> List[DocumentChunk]:
+                          db: Session,
+                          chunk_size: int = None) -> List[DocumentChunk]:
         """
         Create chunks for a document and save them to database
         
         Args:
             document: Document model instance
             db: Database session
+            chunk_size: Optional custom chunk size (overrides default)
             
         Returns:
             List of created DocumentChunk instances
@@ -110,6 +112,9 @@ class PDFChunker:
             document.is_chunked = True
             db.commit()
             
+            # Use custom chunk size if provided, otherwise use default
+            effective_chunk_size = chunk_size if chunk_size else self.max_pages_per_chunk
+            
             # Log the start of chunking
             log_entry = ProcessingLog(
                 document_id=document.id,
@@ -119,7 +124,7 @@ class PDFChunker:
                 metadata={
                     "page_count": page_count,
                     "file_size_mb": file_size_mb,
-                    "chunk_size": self.max_pages_per_chunk
+                    "chunk_size": effective_chunk_size
                 }
             )
             db.add(log_entry)
@@ -128,7 +133,8 @@ class PDFChunker:
             chunks = await self._split_pdf_into_chunks(
                 document.filepath,
                 document.id,
-                page_count
+                page_count,
+                chunk_size=effective_chunk_size
             )
             
             # Save chunks to database
@@ -152,7 +158,7 @@ class PDFChunker:
             # Update document with chunk information
             document.total_chunks = len(chunks)
             document.completed_chunks = 0
-            document.chunk_size = self.max_pages_per_chunk
+            document.chunk_size = effective_chunk_size
             
             # Create processing metrics
             metrics = ProcessingMetrics(
@@ -212,7 +218,8 @@ class PDFChunker:
     async def _split_pdf_into_chunks(self, 
                                     pdf_path: str, 
                                     document_id: int,
-                                    total_pages: int) -> List[dict]:
+                                    total_pages: int,
+                                    chunk_size: int = None) -> List[dict]:
         """
         Split PDF into physical chunk files
         
@@ -226,9 +233,12 @@ class PDFChunker:
             with open(pdf_path, 'rb') as pdf_file:
                 pdf_reader = PdfReader(pdf_file)
                 
+                # Use custom chunk size if provided
+                effective_chunk_size = chunk_size if chunk_size else self.max_pages_per_chunk
+                
                 # Calculate chunks
-                for start_page in range(0, total_pages, self.max_pages_per_chunk - self.chunk_overlap):
-                    end_page = min(start_page + self.max_pages_per_chunk, total_pages)
+                for start_page in range(0, total_pages, effective_chunk_size - self.chunk_overlap):
+                    end_page = min(start_page + effective_chunk_size, total_pages)
                     
                     # Create chunk filename
                     chunk_filename = f"doc_{document_id}_chunk_{chunk_number:03d}.pdf"
