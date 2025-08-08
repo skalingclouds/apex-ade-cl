@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from 'react-query'
 import ReactMarkdown from 'react-markdown'
@@ -22,6 +22,7 @@ import {
   rejectDocument,
   escalateDocument,
   parseDocument,
+  getParsedFields,
   extractDocument,
   exportDocumentCsv,
   exportDocumentMarkdown,
@@ -35,6 +36,21 @@ import FieldSelector from '../components/FieldSelector'
 import ErrorDisplay from '../components/ErrorDisplay'
 import DocumentSidebar from '../components/DocumentSidebar'
 
+// Helper function to safely parse extracted_data
+function safeParseExtractedData(data: any): any {
+  if (!data) return {}
+  if (typeof data === 'object') return data
+  if (typeof data === 'string') {
+    try {
+      return JSON.parse(data)
+    } catch (e) {
+      console.error('Failed to parse extracted_data:', e)
+      return {}
+    }
+  }
+  return {}
+}
+
 export default function DocumentReview() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -47,6 +63,7 @@ export default function DocumentReview() {
   const [exportingCsv, setExportingCsv] = useState(false)
   const [exportingMarkdown, setExportingMarkdown] = useState(false)
   const [exportingText, setExportingText] = useState(false)
+  const [parsedFields, setParsedFields] = useState<FieldInfo[] | null>(null)
   
   const documentId = parseInt(id!)
 
@@ -94,8 +111,9 @@ export default function DocumentReview() {
   })
 
   const parseMutation = useMutation(() => parseDocument(documentId), {
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries(['document', documentId])
+      setParsedFields(data.fields)
       setShowFieldSelector(true)
     },
     onError: (error: any) => {
@@ -133,6 +151,19 @@ export default function DocumentReview() {
       toast.error(errorInfo.message)
     }
   })
+
+  // Load parsed fields when document is PARSED
+  useEffect(() => {
+    if (document?.status === 'PARSED' && !parsedFields) {
+      getParsedFields(documentId)
+        .then(data => {
+          setParsedFields(data.fields)
+        })
+        .catch(error => {
+          console.error('Failed to load parsed fields:', error)
+        })
+    }
+  }, [document?.status, documentId, parsedFields])
 
   const handleExportCsv = async (retryCount = 0) => {
     setExportingCsv(true)
@@ -252,7 +283,21 @@ export default function DocumentReview() {
 
   const canShowExtracted = ['EXTRACTED', 'APPROVED', 'REJECTED', 'ESCALATED'].includes(document.status)
   const canApprove = document.status === 'EXTRACTED'
-  const canParse = document.status === 'PENDING'
+  
+  // Safely check if extraction is empty
+  let hasEmptyExtraction = false
+  if (document.status === 'EXTRACTED') {
+    const parsed = safeParseExtractedData(document.extracted_data)
+    hasEmptyExtraction = !parsed || 
+                        Object.keys(parsed).length <= 1 || 
+                        (typeof document.extracted_data === 'string' && 
+                         (document.extracted_data === '{}' || 
+                          document.extracted_data === '{"apex_id": null}'))
+  }
+  
+  const canParse = document.status === 'PENDING' || hasEmptyExtraction
+  const canSelectFields = document.status === 'PARSED' && parsedFields !== null
+  const canReParse = document.status === 'EXTRACTED' || document.status === 'PARSED'
 
   return (
     <div className="h-full flex">
@@ -357,8 +402,18 @@ export default function DocumentReview() {
                   Parsing...
                 </>
               ) : (
-                'Start Extraction'
+                hasEmptyExtraction ? 'Re-Parse Document' : 'Start Extraction'
               )}
+            </button>
+          )}
+          
+          {canSelectFields && (
+            <button
+              onClick={() => setShowFieldSelector(true)}
+              className="btn btn-primary flex items-center gap-2"
+            >
+              <FileText size={16} />
+              Select Fields for Extraction
             </button>
           )}
 
@@ -420,7 +475,7 @@ export default function DocumentReview() {
               </div>
             )}
             
-            {['parsing', 'extracting'].includes(document.status) && (
+            {['PARSING', 'EXTRACTING'].includes(document.status) && (
               <div className="flex flex-col items-center justify-center h-full">
                 <Loader className="animate-spin mb-4" size={48} />
                 <p className="text-gray-400">Processing document...</p>
@@ -432,8 +487,7 @@ export default function DocumentReview() {
                 <div className="bg-dark-700 rounded-lg p-4">
                   <h3 className="text-sm font-semibold text-gray-300 mb-3">Extracted Fields</h3>
                   <div className="space-y-2">
-                    {Object.entries(typeof document.extracted_data === 'string' ? 
-                      JSON.parse(document.extracted_data) : document.extracted_data)
+                    {Object.entries(safeParseExtractedData(document.extracted_data))
                       .filter(([key]) => key !== 'chunks' && key !== 'full_content')
                       .map(([key, value]) => (
                         <div key={key} className="flex">
@@ -459,10 +513,8 @@ export default function DocumentReview() {
             )}
 
             {canShowExtracted && (markdownData || document.extracted_md) && 
-             (!document.extracted_data || Object.keys(typeof document.extracted_data === 'string' ? 
-              JSON.parse(document.extracted_data || '{}') : (document.extracted_data || {})).length === 0 || 
-              Object.keys(typeof document.extracted_data === 'string' ? 
-               JSON.parse(document.extracted_data || '{}') : (document.extracted_data || {})).every(k => k === 'full_content' || k === 'chunks')) && (
+             (!document.extracted_data || Object.keys(safeParseExtractedData(document.extracted_data)).length === 0 || 
+              Object.keys(safeParseExtractedData(document.extracted_data)).every(k => k === 'full_content' || k === 'chunks')) && (
               <div className="prose prose-invert max-w-none prose-table:border-collapse prose-td:border prose-td:border-gray-600 prose-th:border prose-th:border-gray-600 prose-th:bg-dark-700 prose-td:p-2 prose-th:p-2">
                 <ReactMarkdown 
                   remarkPlugins={[remarkGfm]}
@@ -592,9 +644,9 @@ export default function DocumentReview() {
       )}
 
       {/* Field Selector Modal */}
-      {showFieldSelector && parseMutation.data && (
+      {showFieldSelector && (parsedFields || parseMutation.data?.fields) && (
         <FieldSelector
-          fields={parseMutation.data.fields}
+          fields={parsedFields || parseMutation.data?.fields || []}
           onSelect={(fields, customFields) => extractMutation.mutate({ selectedFields: fields, customFields })}
           onClose={() => setShowFieldSelector(false)}
           isLoading={extractMutation.isLoading}

@@ -229,7 +229,11 @@ class SimpleLandingAIService:
             for field in selected_fields:
                 field_lower = field.lower()
                 is_multi = any(keyword in field_lower for keyword in multi_value_keywords)
-                if is_multi:
+                
+                # Special handling for apex_id
+                if field == 'apex_id':
+                    fields_desc.append(f"- apex_id: Extract the Apex ID which appears as 'Apex ID: ' followed by an alphanumeric code like '25USOA26564'. Look for text that says 'Apex ID:', 'APEX ID:', or similar variations. Return ALL apex IDs found as an array.")
+                elif is_multi:
                     fields_desc.append(f"- {field}: Extract ALL {field.replace('_', ' ')} values as an array. If multiple occurrences exist across pages, include all of them")
                 else:
                     fields_desc.append(f"- {field}: Extract the {field.replace('_', ' ')} as a single value")
@@ -258,7 +262,7 @@ class SimpleLandingAIService:
             response = client.chat.completions.create(
                 model=settings.OPENAI_MODEL or "gpt-4-turbo-preview",
                 messages=[
-                    {"role": "system", "content": "You are a data extraction expert. Extract specific fields from documents and return them as JSON. When a field appears multiple times in the document, return ALL occurrences as an array."},
+                    {"role": "system", "content": "You are a data extraction expert. Extract specific fields from documents and return them as JSON. When a field appears multiple times in the document, return ALL occurrences as an array. Pay special attention to identifiers like 'Apex ID:' which may appear with various formats and capitalizations."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.1,  # Low temperature for accurate extraction
@@ -503,8 +507,8 @@ class SimpleLandingAIService:
     async def extract_document(
         self, 
         file_path: str,
-        schema_model: type[BaseModel],
-        selected_fields: List[str]
+        selected_fields: List[str],
+        custom_fields: Optional[List[dict]] = None
     ) -> ExtractionResult:
         """
         Extract data from document using provided schema.
@@ -512,11 +516,14 @@ class SimpleLandingAIService:
         """
         logger.info(f"Extracting from document: {file_path}")
         logger.info(f"Selected fields: {selected_fields}")
-        logger.info(f"Schema model fields: {schema_model.__fields__.keys()}")
+        logger.info(f"Custom fields: {custom_fields}")
         
         if parse is None:
             # Mock response with chunk telemetry for development
             mock_data = {field: f"Sample {field} value" for field in selected_fields}
+            if custom_fields:
+                for field in custom_fields:
+                    mock_data[field['name']] = f"Sample {field['name']} value"
             
             # Add mock chunks with bounding boxes
             mock_chunks = [
@@ -543,20 +550,74 @@ class SimpleLandingAIService:
             )
         
         try:
-            # First try using Landing.AI SDK/Library (unlimited pages for parsing, 50 for extraction)
+            # Create dynamic schema from selected_fields and custom_fields
+            from pydantic import create_model, Field
+            from typing import Optional
+            
+            # Build field definitions
+            field_definitions = {}
+            
+            # Add selected fields (from OptInFormExtraction model)
+            for field_name in selected_fields:
+                # Create more descriptive field descriptions for better extraction
+                field_desc = f"Extract the {field_name.replace('_', ' ')} from the document. Look for text, labels, or sections that indicate '{field_name.replace('_', ' ')}' or similar variations."
+                field_definitions[field_name] = (Optional[str], Field(default=None, description=field_desc))
+            
+            # Add custom fields
+            if custom_fields:
+                for field in custom_fields:
+                    field_name = field.get('name')
+                    field_type = field.get('type', 'str')
+                    
+                    # Create specific descriptions for known fields to improve extraction accuracy
+                    if field_name == 'apex_id':
+                        field_desc = "The Apex ID identifier found in the document, typically appearing as 'Apex ID: ' followed by an alphanumeric code starting with '25USOA' and followed by numbers (e.g., 'Apex ID: 25USOA26564'). Look for text that explicitly says 'Apex ID:' or 'APEX ID:' in the document header or body."
+                    elif field_name == 'case_number':
+                        field_desc = "The case number or filing number, typically a numeric or alphanumeric identifier used to reference the case in legal or administrative proceedings."
+                    elif field_name == 'filing_date':
+                        field_desc = "The date when the document was filed or submitted, typically in MM/DD/YYYY or similar date format."
+                    elif field_name == 'court_name':
+                        field_desc = "The name of the court or tribunal where the case is being heard."
+                    elif field_name == 'plaintiff':
+                        field_desc = "The name of the plaintiff or petitioner in the legal proceeding."
+                    elif field_name == 'defendant':
+                        field_desc = "The name of the defendant or respondent in the legal proceeding."
+                    else:
+                        # Use user-provided description or create a more detailed default
+                        user_desc = field.get('description', '')
+                        if user_desc:
+                            field_desc = user_desc
+                        else:
+                            field_desc = f"Extract the {field_name.replace('_', ' ')} value from the document. Look for labels, headers, or text that indicates '{field_name.replace('_', ' ')}' or similar variations."
+                    
+                    # Map type string to Python type
+                    python_type = str  # default
+                    if field_type == 'bool':
+                        python_type = bool
+                    elif field_type == 'int':
+                        python_type = int
+                    elif field_type == 'float':
+                        python_type = float
+                    
+                    field_definitions[field_name] = (Optional[python_type], Field(default=None, description=field_desc))
+            
+            # Log field definitions for debugging
+            logger.info(f"Creating dynamic model with {len(field_definitions)} fields:")
+            for field_name, (field_type, field_obj) in field_definitions.items():
+                logger.info(f"  - {field_name}: {field_obj.description}")
+            
+            # Create dynamic model
+            DynamicExtractionModel = create_model('DynamicExtractionModel', **field_definitions)
+            
+            # First try using Landing.AI SDK/Library
             logger.info("Attempting extraction with Landing.AI SDK/Library (preferred for paid plan)")
             
-            # Get custom field descriptions from schema model if available
-            custom_descriptions = {}
-            for field_name, field_info in schema_model.__fields__.items():
-                if hasattr(field_info, 'description') and field_info.description:
-                    custom_descriptions[field_name] = field_info.description
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(
                 None,
                 lambda: parse(
                     documents=[file_path],
-                    extraction_model=schema_model
+                    extraction_model=DynamicExtractionModel
                 )
             )
             
@@ -574,13 +635,18 @@ class SimpleLandingAIService:
                 
                 if result and len(result) > 0:
                     markdown_content = getattr(result[0], 'markdown', '')
+                    # Prepare all fields for extraction
+                    all_fields = list(selected_fields)
+                    if custom_fields:
+                        all_fields.extend([f['name'] for f in custom_fields])
+                    
                     # Use OpenAI to extract fields from markdown
                     if markdown_content and OpenAI and settings.OPENAI_API_KEY:
                         logger.info("Using OpenAI to extract fields from markdown")
-                        extracted_data = self._extract_fields_using_openai(markdown_content, selected_fields)
+                        extracted_data = self._extract_fields_using_openai(markdown_content, all_fields)
                         extraction_method = "OPENAI_FALLBACK"
                     else:
-                        extracted_data = {field: None for field in selected_fields}
+                        extracted_data = {field: None for field in all_fields}
                         extraction_method = "FAILED"
                     
                     return ExtractionResult(
@@ -602,6 +668,10 @@ class SimpleLandingAIService:
             if hasattr(parsed_doc, 'extraction') and parsed_doc.extraction:
                 extracted_data = parsed_doc.extraction.model_dump()
                 logger.info(f"Landing.AI extracted data keys: {list(extracted_data.keys())}")
+                logger.info(f"Landing.AI extracted data values: {extracted_data}")
+                # Check specifically for apex_id
+                if 'apex_id' in extracted_data:
+                    logger.info(f"apex_id value from Landing.AI: {extracted_data.get('apex_id')}")
             
             # Check if Landing.AI extraction was successful for the selected fields
             # If not, use OpenAI to extract the specific fields
@@ -621,13 +691,20 @@ class SimpleLandingAIService:
             
             if needs_openai_extraction and markdown_content:
                 logger.info("Using OpenAI to extract specific fields from markdown")
-                extracted_data = self._extract_fields_using_openai(markdown_content, selected_fields)
+                all_fields_for_extraction = list(selected_fields)
+                if custom_fields:
+                    all_fields_for_extraction.extend([f['name'] for f in custom_fields])
+                extracted_data = self._extract_fields_using_openai(markdown_content, all_fields_for_extraction)
                 extraction_method = "OPENAI_FALLBACK"
             
-            # Filter to only include requested fields
+            # Filter to only include requested fields (both selected and custom)
+            all_requested_fields = list(selected_fields)
+            if custom_fields:
+                all_requested_fields.extend([f['name'] for f in custom_fields])
+            
             filtered_data = {
                 field: extracted_data.get(field, None) 
-                for field in selected_fields
+                for field in all_requested_fields
             }
             
             # Extract chunk telemetry with bounding boxes if available
