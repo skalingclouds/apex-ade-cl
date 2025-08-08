@@ -10,7 +10,7 @@ from app.core.database import get_db
 from app.core.config import settings
 from app.models.document import Document, DocumentStatus
 from app.schemas.document import DocumentResponse, DocumentListResponse, DocumentUpdate, RejectRequest, EscalateRequest
-from app.schemas.extraction import ParseResponse, FieldInfo
+from app.schemas.extraction import ParseResponse, FieldInfo, ExtractionRequest
 from app.services.audit_service import AuditService
 from app.services.analytics_service import AnalyticsService
 
@@ -257,6 +257,54 @@ def delete_document(
     db.delete(document)
     db.commit()
 
+@router.get("/{document_id}/parsed-fields", response_model=ParseResponse)
+def get_parsed_fields(
+    document_id: int,
+    db: Session = Depends(get_db)
+):
+    """Get parsed fields for a document that has already been parsed"""
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found"
+        )
+    
+    if document.status not in [DocumentStatus.PARSED, DocumentStatus.EXTRACTED]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Document has not been parsed yet"
+        )
+    
+    # Load parsed fields from database
+    import json
+    if document.parsed_fields:
+        fields_data = json.loads(document.parsed_fields)
+        fields = [FieldInfo(**field) for field in fields_data]
+    else:
+        # Fallback to OptInFormExtraction model if no saved fields
+        from app.models.extraction_models import OptInFormExtraction
+        fields = []
+        for field_name, field_obj in OptInFormExtraction.__fields__.items():
+            fields.append(FieldInfo(
+                name=field_name,
+                type="string" if field_obj.type_ != bool else "boolean",
+                description=field_obj.field_info.description or field_name.replace('_', ' ').title(),
+                required=field_obj.required
+            ))
+    
+    return ParseResponse(
+        document_id=document_id,
+        fields=fields,
+        markdown="",
+        metadata={
+            "source": "Saved parsed fields" if document.parsed_fields else "OptInFormExtraction model",
+            "total_pages": document.page_count,
+            "is_chunked": document.is_chunked,
+            "total_chunks": document.total_chunks
+        }
+    )
+
 @router.post("/{document_id}/parse", response_model=ParseResponse)
 async def parse_document(
     request: Request,
@@ -271,14 +319,14 @@ async def parse_document(
             detail="Document not found"
         )
     
-    # Check if document is ready for parsing
-    if document.status not in [DocumentStatus.PENDING, DocumentStatus.FAILED]:
+    # Check if document is ready for parsing - allow re-parsing of extracted documents
+    if document.status not in [DocumentStatus.PENDING, DocumentStatus.FAILED, DocumentStatus.EXTRACTED, DocumentStatus.PARSED]:
         if document.status == DocumentStatus.CHUNKING:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Document is still being chunked. Please wait."
             )
-        elif document.status in [DocumentStatus.PROCESSING, DocumentStatus.EXTRACTING]:
+        elif document.status in [DocumentStatus.EXTRACTING]:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Document is already being processed."
@@ -322,6 +370,12 @@ async def parse_document(
             required=field_obj.required
         ))
     
+    # Save parsed fields to database for later retrieval
+    import json
+    document.parsed_fields = json.dumps([field.dict() for field in fields])
+    document.status = DocumentStatus.PARSED
+    db.commit()
+    
     # Return the suggested fields for user selection
     return ParseResponse(
         document_id=document_id,
@@ -340,8 +394,7 @@ async def process_document(
     request: Request,
     background_tasks: BackgroundTasks,
     document_id: int,
-    selected_fields: List[str] = [],
-    custom_fields: List[dict] = None,
+    extraction_request: ExtractionRequest,
     db: Session = Depends(get_db)
 ):
     """Process document with selected fields for extraction"""
@@ -352,19 +405,21 @@ async def process_document(
             detail="Document not found"
         )
     
-    # Check document status
-    if document.status == DocumentStatus.PROCESSING:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Document is already being processed"
-        )
+    # Check document status - allow re-processing if already extracted or failed
+    if document.status in [DocumentStatus.EXTRACTING]:
+        # Return current status if already extracting
+        return document
     
-    # Update status to processing
-    document.status = DocumentStatus.PROCESSING
+    # Update status to extracting
+    document.status = DocumentStatus.EXTRACTING
     db.commit()
     
+    # Extract selected_fields and custom_fields from the request
+    selected_fields = extraction_request.selected_fields or []
+    custom_fields = extraction_request.custom_fields or []
+    
     # If user provided fields, use them for extraction
-    if selected_fields:
+    if selected_fields or custom_fields:
         # Use custom extraction with selected fields
         background_tasks.add_task(
             process_document_with_fields,
@@ -386,6 +441,8 @@ async def process_document_with_fields(document_id: int, selected_fields: List[s
     """Process document with user-selected fields"""
     from app.core.database import SessionLocal
     from app.services.chunk_processor_optimized import OptimizedChunkProcessor
+    from app.services.simple_landing_ai_service import SimpleLandingAIService
+    import json
     
     db = SessionLocal()
     try:
@@ -393,14 +450,29 @@ async def process_document_with_fields(document_id: int, selected_fields: List[s
         if not document:
             raise ValueError(f"Document {document_id} not found")
         
-        processor = OptimizedChunkProcessor(db)
-        
-        # Process with selected fields
-        await processor.process_document_chunks(
-            document=document,
-            selected_fields=selected_fields,
-            custom_fields=custom_fields
-        )
+        # Check if document is chunked
+        if document.is_chunked:
+            # Process chunks for large documents
+            processor = OptimizedChunkProcessor(db)
+            await processor.process_document_chunks(
+                document=document,
+                selected_fields=selected_fields,
+                custom_fields=custom_fields
+            )
+        else:
+            # Process directly for small documents
+            service = SimpleLandingAIService()
+            extraction_result = await service.extract_document(
+                file_path=document.filepath,
+                selected_fields=selected_fields,
+                custom_fields=custom_fields
+            )
+            
+            # Update document with extracted data from the ExtractionResult object
+            document.extracted_data = json.dumps(extraction_result.data)
+            document.extracted_md = extraction_result.markdown
+            document.status = DocumentStatus.EXTRACTED
+            db.commit()
         
         print(f"Successfully processed document {document_id} with selected fields")
         
@@ -418,7 +490,9 @@ async def process_document_with_model(document_id: int):
     """Process document with OptInFormExtraction model"""
     from app.core.database import SessionLocal
     from app.services.chunk_processor_optimized import OptimizedChunkProcessor
+    from app.services.simple_landing_ai_service import SimpleLandingAIService
     from app.models.extraction_models import OptInFormExtraction
+    import json
     
     db = SessionLocal()
     try:
@@ -426,13 +500,31 @@ async def process_document_with_model(document_id: int):
         if not document:
             raise ValueError(f"Document {document_id} not found")
         
-        processor = OptimizedChunkProcessor(db)
-        
-        # Process with OptInFormExtraction model
-        await processor.process_document_with_structured_extraction(
-            document=document,
-            extraction_model=OptInFormExtraction
-        )
+        # Check if document is chunked
+        if document.is_chunked:
+            # Process chunks for large documents
+            processor = OptimizedChunkProcessor(db)
+            await processor.process_document_with_structured_extraction(
+                document=document,
+                extraction_model=OptInFormExtraction
+            )
+        else:
+            # Process directly for small documents
+            service = SimpleLandingAIService()
+            extraction_result = await service.extract_with_structured_model(
+                file_path=document.filepath,
+                extraction_model=OptInFormExtraction
+            )
+            
+            # Update document with extracted data from the ExtractionResult object
+            if extraction_result:
+                document.extracted_data = json.dumps(extraction_result.data if hasattr(extraction_result, 'data') else extraction_result)
+                if hasattr(extraction_result, 'markdown'):
+                    document.extracted_md = extraction_result.markdown
+            else:
+                document.extracted_data = json.dumps({})
+            document.status = DocumentStatus.EXTRACTED
+            db.commit()
         
         print(f"Successfully processed document {document_id} with OptInFormExtraction model")
         
