@@ -122,7 +122,7 @@ export const uploadDocument = async (payload: UploadPayload): Promise<Document> 
   console.log('FormData constructor:', FormData)
   console.log('FormData.prototype:', FormData.prototype)
   
-  // Use the most basic XMLHttpRequest possible
+  // Use XMLHttpRequest with proper timeout and progress handling for large files
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
     
@@ -132,32 +132,73 @@ export const uploadDocument = async (payload: UploadPayload): Promise<Document> 
       console.log('XHR send called with:', data)
       console.log('Data type:', typeof data)
       console.log('Is FormData:', data instanceof FormData)
+      console.log('File size in MB:', payload.file.size / (1024 * 1024))
       return originalSend.call(this, data)
     }
     
     xhr.open('POST', `${API_BASE_URL}/documents/upload`)
     
-    // Don't set ANY headers - let browser handle it
+    // Set a very long timeout for large files (30 minutes)
+    xhr.timeout = 30 * 60 * 1000 // 30 minutes in milliseconds
+    
+    // Don't set Content-Type header - let browser handle it for multipart
+    
+    // Add upload progress tracking
+    xhr.upload.onprogress = function(event) {
+      if (event.lengthComputable) {
+        const percentComplete = (event.loaded / event.total) * 100
+        console.log(`Upload progress: ${percentComplete.toFixed(2)}%`)
+        // You could emit this progress to update UI if needed
+      }
+    }
     
     xhr.onload = function() {
       console.log('Response status:', xhr.status)
       console.log('Response:', xhr.responseText)
       
       if (xhr.status === 200) {
-        resolve(JSON.parse(xhr.responseText))
+        try {
+          resolve(JSON.parse(xhr.responseText))
+        } catch (e) {
+          console.error('Failed to parse response:', e)
+          reject(new Error('Invalid response from server'))
+        }
+      } else if (xhr.status === 413) {
+        reject(new Error('File too large. Maximum size is 1GB'))
       } else {
-        const error = JSON.parse(xhr.responseText)
-        reject(new Error(error.detail?.[0]?.msg || 'Upload failed'))
+        try {
+          const error = JSON.parse(xhr.responseText)
+          reject(new Error(error.detail || error.detail?.[0]?.msg || 'Upload failed'))
+        } catch (e) {
+          reject(new Error(`Upload failed with status ${xhr.status}`))
+        }
       }
     }
     
     xhr.onerror = function() {
-      console.error('XHR error')
-      reject(new Error('Network error'))
+      console.error('XHR error event fired')
+      reject(new Error('Network error - check your connection'))
     }
     
-    console.log('Sending FormData...')
-    xhr.send(formData)
+    xhr.ontimeout = function() {
+      console.error('XHR timeout after 30 minutes')
+      reject(new Error('Upload timeout - file may be too large or connection too slow'))
+    }
+    
+    xhr.onabort = function() {
+      console.error('XHR aborted')
+      reject(new Error('Upload was canceled'))
+    }
+    
+    console.log('Sending FormData with file:', payload.file.name)
+    console.log('File size:', payload.file.size, 'bytes')
+    
+    try {
+      xhr.send(formData)
+    } catch (e) {
+      console.error('Failed to send request:', e)
+      reject(new Error('Failed to start upload'))
+    }
   })
 }
 
@@ -186,7 +227,7 @@ export const extractDocument = async (
   selectedFields: string[], 
   customFields?: FieldInfo[]
 ): Promise<ExtractionResponse> => {
-  const response = await api.post(`/documents/${id}/extract`, {
+  const response = await api.post(`/documents/${id}/process`, {
     selected_fields: selectedFields,
     custom_fields: customFields || []
   })

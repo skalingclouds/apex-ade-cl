@@ -19,9 +19,11 @@ from app.core.config import settings
 # Import landing.ai SDK
 try:
     from agentic_doc.parse import parse
+    from agentic_doc.config import ParseConfig
     from agentic_doc.utils import viz_parsed_document
 except ImportError:
     parse = None
+    ParseConfig = None
     viz_parsed_document = None
 
 # Import OpenAI for dynamic field generation
@@ -332,6 +334,72 @@ class SimpleLandingAIService:
         }
         
         return schema
+    
+    async def extract_with_structured_model(self, file_path: str, extraction_model: Optional[BaseModel] = None, max_pages: int = 45) -> Optional[ExtractionResult]:
+        """
+        Use Landing.AI SDK with ParseConfig for structured extraction.
+        Respects the 45-page limit for structured extraction.
+        
+        Args:
+            file_path: Path to the document
+            extraction_model: Pydantic model for structured extraction
+            max_pages: Maximum pages to process (default 50 for Landing.AI limit)
+            
+        Returns:
+            ExtractionResult with extracted data
+        """
+        if not parse or not ParseConfig:
+            logger.error("Landing.AI SDK not available")
+            return None
+            
+        try:
+            # Create ParseConfig with extraction model
+            config = ParseConfig(
+                api_key=self.api_key,
+                extraction_model=extraction_model,
+                include_marginalia=True,
+                include_metadata_in_markdown=True,
+                extraction_split_size=max_pages  # Respect the 45-page limit
+            )
+            
+            logger.info(f"Processing {file_path} with structured extraction model")
+            logger.info(f"Max pages per batch: {max_pages}")
+            
+            # Parse with the configured settings
+            result = parse(file_path, config=config)
+            
+            if result:
+                # Extract the structured data
+                extracted_data = {}
+                if hasattr(result, 'extraction') and result.extraction:
+                    if isinstance(result.extraction, list):
+                        # Multiple extractions (one per page/form)
+                        extracted_data = {
+                            "forms": [item.dict() if hasattr(item, 'dict') else item for item in result.extraction],
+                            "total_forms": len(result.extraction)
+                        }
+                    else:
+                        # Single extraction
+                        extracted_data = result.extraction.dict() if hasattr(result.extraction, 'dict') else result.extraction
+                
+                return ExtractionResult(
+                    data=extracted_data,
+                    markdown=result.markdown if hasattr(result, 'markdown') else "",
+                    processed_at=datetime.utcnow(),
+                    extraction_metadata={
+                        "method": "structured_model",
+                        "model_name": extraction_model.__name__ if extraction_model else "None",
+                        "max_pages": max_pages
+                    }
+                )
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Structured extraction failed: {str(e)}")
+            if "exceeds the maximum of 50 pages" in str(e) or "exceeds the maximum of 45 pages" in str(e):
+                logger.error("Document exceeds 45-page limit for structured extraction. Consider splitting the document first.")
+            return None
     
     async def _extract_using_landing_ai_api(self, file_path: str, selected_fields: List[str], custom_field_descriptions: Dict[str, str] = {}) -> Optional[Dict[str, Any]]:
         """

@@ -44,6 +44,138 @@ class OptimizedChunkProcessor:
         
         logger.info(f"OptimizedChunkProcessor initialized with {self.max_parallel_chunks} parallel workers")
     
+    async def process_document_with_structured_extraction(self,
+                                                         document: Document,
+                                                         extraction_model: Any) -> Dict[str, Any]:
+        """
+        Process document chunks using structured extraction with a Pydantic model.
+        Respects the 45-page limit for structured extraction.
+        
+        Args:
+            document: Document to process
+            extraction_model: Pydantic model for extraction (e.g., OptInFormExtraction)
+            
+        Returns:
+            Dictionary with all extracted forms
+        """
+        logger.info(f"Starting structured extraction for document {document.id}")
+        
+        try:
+            # Get chunks for this document
+            chunks = self.db.query(DocumentChunk).filter(
+                DocumentChunk.document_id == document.id
+            ).order_by(DocumentChunk.chunk_number).all()
+            
+            if not chunks:
+                raise ValueError(f"No chunks found for document {document.id}")
+            
+            logger.info(f"Processing {len(chunks)} chunks with structured extraction")
+            
+            # Initialize metrics
+            self._initialize_metrics(document.id, total_chunks=len(chunks))
+            
+            # Process each chunk with structured extraction
+            all_forms = []
+            for chunk in chunks:
+                chunk_start = time.time()
+                
+                # Update chunk status
+                chunk.status = ChunkStatus.PROCESSING
+                chunk.processing_started_at = datetime.utcnow()
+                self.db.commit()
+                
+                try:
+                    # Use structured extraction with the model
+                    result = await self.landing_ai_service.extract_with_structured_model(
+                        file_path=chunk.file_path,
+                        extraction_model=extraction_model,
+                        max_pages=45  # Respect Landing.AI limit
+                    )
+                    
+                    if result and result.data:
+                        # Handle both single form and multiple forms
+                        if "forms" in result.data:
+                            # Multiple forms extracted
+                            forms = result.data["forms"]
+                            all_forms.extend(forms)
+                            logger.info(f"Extracted {len(forms)} forms from chunk {chunk.chunk_number}")
+                        else:
+                            # Single form extracted
+                            all_forms.append(result.data)
+                            logger.info(f"Extracted 1 form from chunk {chunk.chunk_number}")
+                        
+                        # Update chunk status
+                        chunk.status = ChunkStatus.COMPLETED
+                        chunk.extracted_data = result.data
+                        chunk.extraction_method = ExtractionMethod.LANDING_AI_STRUCTURED
+                        chunk.processing_completed_at = datetime.utcnow()
+                        chunk.processing_time_ms = int((time.time() - chunk_start) * 1000)
+                        
+                        # Log success
+                        self._log_processing_event(
+                            document_id=document.id,
+                            chunk_id=chunk.id,
+                            action="STRUCTURED_EXTRACTION_SUCCESS",
+                            message=f"Successfully extracted forms from chunk {chunk.chunk_number}",
+                            metadata=result.extraction_metadata
+                        )
+                    else:
+                        # No data extracted
+                        chunk.status = ChunkStatus.FAILED
+                        chunk.error_message = "No data extracted"
+                        logger.warning(f"No data extracted from chunk {chunk.chunk_number}")
+                        
+                except Exception as e:
+                    logger.error(f"Failed to process chunk {chunk.chunk_number}: {str(e)}")
+                    chunk.status = ChunkStatus.FAILED
+                    chunk.error_message = str(e)
+                    
+                    # Log failure
+                    self._log_processing_event(
+                        document_id=document.id,
+                        chunk_id=chunk.id,
+                        action="STRUCTURED_EXTRACTION_FAILED",
+                        message=f"Failed to extract from chunk {chunk.chunk_number}: {str(e)}"
+                    )
+                
+                self.db.commit()
+                
+                # Update metrics
+                completed = len([c for c in chunks if c.status == ChunkStatus.COMPLETED])
+                self._update_metrics(document.id, completed_chunks=completed)
+            
+            # Compile final results
+            final_results = {
+                "total_forms": len(all_forms),
+                "forms": all_forms,
+                "extraction_model": extraction_model.__name__,
+                "processed_chunks": len(chunks),
+                "successful_chunks": len([c for c in chunks if c.status == ChunkStatus.COMPLETED])
+            }
+            
+            # Update document
+            document.extracted_data = json.dumps(final_results)
+            document.status = DocumentStatus.EXTRACTED
+            document.completed_chunks = final_results["successful_chunks"]
+            self.db.commit()
+            
+            # Log completion
+            self._log_processing_event(
+                document_id=document.id,
+                action="STRUCTURED_EXTRACTION_COMPLETE",
+                message=f"Successfully extracted {len(all_forms)} forms from {len(chunks)} chunks",
+                metadata=final_results
+            )
+            
+            return final_results
+            
+        except Exception as e:
+            logger.error(f"Error in structured extraction: {str(e)}")
+            document.status = DocumentStatus.FAILED
+            document.error_message = str(e)
+            self.db.commit()
+            raise
+    
     async def process_document_chunks(self,
                                      document: Document,
                                      selected_fields: List[str],
@@ -300,6 +432,46 @@ class OptimizedChunkProcessor:
             )
             
             return None
+    
+    def _initialize_metrics(self, document_id: int, total_chunks: int):
+        """Initialize or update processing metrics for a document"""
+        # Check if metrics already exist
+        metrics = self.db.query(ProcessingMetrics).filter(
+            ProcessingMetrics.document_id == document_id
+        ).first()
+        
+        if metrics:
+            # Update existing metrics
+            metrics.total_chunks = total_chunks
+            metrics.completed_chunks = 0
+            metrics.failed_chunks = 0
+            metrics.is_complete = False
+            metrics.has_failures = False
+            metrics.updated_at = datetime.utcnow()
+        else:
+            # Create new metrics
+            metrics = ProcessingMetrics(
+                document_id=document_id,
+                total_pages=self.db.query(Document).filter(
+                    Document.id == document_id
+                ).first().page_count or 0,
+                total_chunks=total_chunks,
+                processed_pages=0,
+                completed_chunks=0,
+                failed_chunks=0,
+                landing_ai_api_count=0,
+                landing_ai_sdk_count=0,
+                openai_fallback_count=0,
+                total_processing_time_ms=0,
+                total_api_calls=0,
+                estimated_cost=0.0,
+                is_complete=False,
+                has_failures=False
+            )
+            self.db.add(metrics)
+        
+        self.db.commit()
+        logger.info(f"Initialized metrics for document {document_id} with {total_chunks} chunks")
     
     def _update_extraction_method_count(self, document_id: int, method: str):
         """Update extraction method usage in metrics"""
