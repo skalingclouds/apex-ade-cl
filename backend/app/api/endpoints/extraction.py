@@ -40,9 +40,11 @@ async def parse_document(
     if not document:
         raise DocumentNotFoundError(document_id)
     
-    if document.status != DocumentStatus.PENDING:
+    # Allow re-parsing of documents with empty or failed extractions
+    allowed_statuses = [DocumentStatus.PENDING, DocumentStatus.FAILED, DocumentStatus.EXTRACTED, DocumentStatus.PARSED]
+    if document.status not in allowed_statuses:
         raise ExtractionError(
-            f"Document is in {document.status} status and cannot be parsed. Only pending documents can be parsed.",
+            f"Document is in {document.status} status and cannot be parsed. Document must be in PENDING, FAILED, EXTRACTED, or PARSED status.",
             "INVALID_DOCUMENT_STATUS"
         )
     

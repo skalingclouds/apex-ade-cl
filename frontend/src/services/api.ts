@@ -222,6 +222,11 @@ export const parseDocument = async (id: number): Promise<ParseResponse> => {
   return response.data
 }
 
+export const getParsedFields = async (id: number): Promise<ParseResponse> => {
+  const response = await api.get(`/documents/${id}/parsed-fields`)
+  return response.data
+}
+
 export const extractDocument = async (
   id: number, 
   selectedFields: string[], 

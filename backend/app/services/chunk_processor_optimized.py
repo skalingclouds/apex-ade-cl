@@ -228,10 +228,14 @@ class OptimizedChunkProcessor:
                 custom_fields=custom_fields
             )
             
-            # Merge results from all chunks
+            # Merge results from all chunks - include both selected and custom fields
+            all_field_names = list(selected_fields)
+            if custom_fields:
+                all_field_names.extend([f['name'] for f in custom_fields])
+            
             merged_results = await self._merge_chunk_results(
                 chunks=chunks,
-                field_names=selected_fields
+                field_names=all_field_names
             )
             
             # Update document with merged results
