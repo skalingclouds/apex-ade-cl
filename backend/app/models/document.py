@@ -27,6 +27,7 @@ class Document(Base):
     status = Column(Enum(DocumentStatus), default=DocumentStatus.PENDING, nullable=False)
     extracted_md = Column(Text, nullable=True)
     extracted_data = Column(Text, nullable=True)  # JSON string of extracted data
+    parsed_fields = Column(Text, nullable=True)  # JSON string of parsed field definitions
     error_message = Column(Text, nullable=True)
     uploaded_at = Column(DateTime(timezone=True), server_default=func.now())
     processed_at = Column(DateTime(timezone=True), nullable=True)
