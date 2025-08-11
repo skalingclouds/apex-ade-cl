@@ -1,6 +1,20 @@
 import axios from 'axios'
 
-const API_BASE_URL = '/api/v1'
+// ------------------------------------------------------------------
+// Dynamic configuration via Vite env vars
+// ------------------------------------------------------------------
+// VITE_API_URL  – full origin of backend (e.g. https://apex-ade-backend.onrender.com)
+// VITE_UPLOAD_MODE – 'local' (default) or 'azure'
+// ------------------------------------------------------------------
+
+// Remove trailing slash if present so we can safely append routes
+const API_ORIGIN =
+  (import.meta as any).env?.VITE_API_URL?.replace(/\/$/, '') || ''
+
+export const API_BASE_URL = `${API_ORIGIN}/api/v1`
+
+const UPLOAD_MODE =
+  (import.meta as any).env?.VITE_UPLOAD_MODE?.toLowerCase() || 'local'
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -52,8 +66,10 @@ export interface DocumentListResponse {
 
 export interface DocumentStats {
   total: number
-  pending: number
-  completed: number
+// -----------------------
+//  Upload helpers
+// -----------------------
+const uploadLocal = async (payload: UploadPayload): Promise<Document> => {
   failed: number
   completionRate: number
   successful: number
@@ -202,6 +218,72 @@ export const uploadDocument = async (payload: UploadPayload): Promise<Document> 
   })
 }
 
+/**
+ * Azure Blob upload flow:
+ *  1. Ask backend for SAS URL
+ *  2. PUT the file to that URL
+ *  3. Tell backend to register the blob
+ */
+const uploadAzure = async (payload: UploadPayload): Promise<Document> => {
+  // Step 1 – obtain SAS URL
+  const sasResp = await api.post('/uploads/azure-sas', {
+    filename: payload.file.name,
+    content_type: payload.file.type || 'application/pdf',
+    size: payload.file.size,
+  })
+
+  const { uploadUrl, blobUrl } = sasResp.data as {
+    uploadUrl: string
+    blobUrl: string
+  }
+
+  // Step 2 – PUT file bytes to Azure
+  await new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('PUT', uploadUrl)
+    xhr.setRequestHeader('x-ms-blob-type', 'BlockBlob')
+    xhr.setRequestHeader('Content-Type', payload.file.type || 'application/pdf')
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        const pct = (e.loaded / e.total) * 100
+        console.log(`Azure upload progress: ${pct.toFixed(2)}%`)
+      }
+    }
+    xhr.onload = () => {
+      if (xhr.status === 201 || xhr.status === 200) {
+        resolve()
+      } else {
+        reject(new Error(`Azure upload failed with status ${xhr.status}`))
+      }
+    }
+    xhr.onerror = () => reject(new Error('Azure network error'))
+    xhr.ontimeout = () => reject(new Error('Azure upload timeout'))
+    xhr.timeout = 30 * 60 * 1000 // 30 min
+    xhr.send(payload.file)
+  })
+
+  // Step 3 – register blob with backend so it can create Document record
+  const registerResp = await api.post('/uploads/register', {
+    blob_url: blobUrl,
+    filename: payload.file.name,
+    size: payload.file.size,
+  })
+  return registerResp.data
+}
+
+// ----------------------------------------------------------
+//  Public API – delegates to correct upload implementation
+// ----------------------------------------------------------
+export const uploadDocument = async (
+  payload: UploadPayload
+): Promise<Document> => {
+  if (UPLOAD_MODE === 'azure') {
+    return uploadAzure(payload)
+  }
+  // default
+  return uploadLocal(payload)
+}
+
 export const getDocuments = async (status?: string): Promise<DocumentListResponse> => {
   const params = status ? { status } : {}
   const response = await api.get('/documents/', { params })
@@ -317,3 +399,6 @@ export const getDocumentStats = async (): Promise<DocumentStats> => {
 
 // Default export for api instance
 export default api
+
+// Helper for other modules that may need the base URL
+export const getApiBaseUrl = (): string => API_BASE_URL

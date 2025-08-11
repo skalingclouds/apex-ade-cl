@@ -21,6 +21,21 @@ class Settings(BaseSettings):
     MAX_UPLOAD_SIZE: int = 1073741824  # 1GB - supports large PDFs (900MB+)
     UPLOAD_DIRECTORY: str = "./uploads"
     
+    # ------------------------------------------------------------------
+    # Storage configuration
+    # ------------------------------------------------------------------
+    # Select where uploaded files are placed before processing:
+    #   - "local" (default): save to local filesystem (UPLOAD_DIRECTORY)
+    #   - "azure":  upload directly to Azure Blob Storage via SAS URL
+    STORAGE_MODE: str = "local"
+
+    # Azure Blob Storage settings (used when STORAGE_MODE == "azure")
+    AZURE_STORAGE_ACCOUNT_NAME: str = ""
+    AZURE_STORAGE_ACCOUNT_KEY: str = ""
+    AZURE_STORAGE_CONTAINER_NAME: str = ""
+    # Minutes before an issued SAS token expires
+    AZURE_SAS_TTL_MINUTES: int = 60
+
     # Security
     SECRET_KEY: str = "your-secret-key-here-change-in-production"
     ALGORITHM: str = "HS256"
