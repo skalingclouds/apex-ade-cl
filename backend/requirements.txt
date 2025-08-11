@@ -25,3 +25,9 @@ PyPDF2>=3.0.0
 
 # HTTP requests for API calls
 requests>=2.31.0
+
+# Excel export support
+openpyxl>=3.1.0
+
+# Azure Blob Storage client
+azure-storage-blob>=12.21.0

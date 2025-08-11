@@ -1,0 +1,59 @@
+services:
+  - type: web
+    name: apex-ade-backend
+    env: docker
+    dockerfilePath: backend/Dockerfile
+    dockerCommand: bash -lc 'alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT'
+    plan: standard
+    branch: main
+    healthCheckPath: /docs
+    disk:
+      name: uploads
+      mountPath: /app/uploads
+      sizeGB: 10
+    envVars:
+      - key: VISION_AGENT_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        value: sqlite:////app/apex_ade.db
+      - key: MAX_UPLOAD_SIZE
+        value: "1073741824"
+      - key: UPLOAD_DIRECTORY
+        value: /app/uploads
+      - key: BACKEND_CORS_ORIGINS
+        value: '["https://apex-ade-frontend.onrender.com", "http://localhost:3000"]'
+      - key: APP_NAME
+        value: ApexADE
+      - key: APP_VERSION
+        value: "0.1.0"
+      - key: DEBUG
+        value: "false"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: STORAGE_MODE
+        value: azure
+      - key: AZURE_STORAGE_ACCOUNT_NAME
+        sync: false
+      - key: AZURE_STORAGE_ACCOUNT_KEY
+        sync: false
+      - key: AZURE_STORAGE_CONTAINER_NAME
+        sync: false
+      - key: AZURE_SAS_TTL_MINUTES
+        value: "60"
+
+  - type: web
+    name: apex-ade-frontend
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://apex-ade-backend.onrender.com
+      - key: VITE_UPLOAD_MODE
+        value: azure
+
+previews:
+  generation: manual
