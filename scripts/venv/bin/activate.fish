@@ -29,7 +29,7 @@ end
 # Unset irrelevant variables.
 deactivate nondestructive
 
-set -gx VIRTUAL_ENV "/Users/chris/ai/naitiveade/.conductor/valletta/apex-ade-cl/scripts/venv"
+set -gx VIRTUAL_ENV "/Users/chris/ai/apex-ade-cl-v2/scripts/venv"
 
 set -gx _OLD_VIRTUAL_PATH $PATH
 set -gx PATH "$VIRTUAL_ENV/bin" $PATH

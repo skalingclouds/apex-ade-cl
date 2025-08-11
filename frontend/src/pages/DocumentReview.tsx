@@ -486,27 +486,40 @@ export default function DocumentReview() {
               <div className="mb-6">
                 <div className="bg-dark-700 rounded-lg p-4">
                   <h3 className="text-sm font-semibold text-gray-300 mb-3">Extracted Fields</h3>
-                  <div className="space-y-2">
-                    {Object.entries(safeParseExtractedData(document.extracted_data))
-                      .filter(([key]) => key !== 'chunks' && key !== 'full_content')
-                      .map(([key, value]) => (
-                        <div key={key} className="flex">
-                          <span className="text-gray-400 min-w-[150px]">{key.replace(/_/g, ' ')}:</span>
-                          <span className="text-white">
-                            {Array.isArray(value) ? (
-                              value.length > 0 ? (
-                                <div className="space-y-1">
-                                  {value.map((item, index) => (
-                                    <div key={index} className="pl-2">
-                                      • {String(item)}
+                  {/* Always render as a clean table */}
+                  <div className="overflow-auto">
+                    <table className="w-full border-collapse border border-gray-600 text-sm">
+                      <thead className="bg-dark-600">
+                        <tr>
+                          <th className="border border-gray-600 p-2 text-left">Field</th>
+                          <th className="border border-gray-600 p-2 text-left">Value</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {Object.entries(safeParseExtractedData(document.extracted_data))
+                          .filter(([key]) => key !== 'chunks' && key !== 'full_content')
+                          .map(([key, value]) => (
+                            <tr key={key} className="border-b border-gray-600">
+                              <td className="border border-gray-600 p-2 align-top min-w-[160px]">{key.replace(/_/g, ' ')}</td>
+                              <td className="border border-gray-600 p-2">
+                                {Array.isArray(value) ? (
+                                  value.length > 0 ? (
+                                    <div className="space-y-1">
+                                      {value.map((item, index) => (
+                                        <div key={index}>{String(item)}</div>
+                                      ))}
                                     </div>
-                                  ))}
-                                </div>
-                              ) : '(empty)'
-                            ) : String(value || '(empty)')}
-                          </span>
-                        </div>
-                      ))}
+                                  ) : (
+                                    <span className="text-gray-400">(empty)</span>
+                                  )
+                                ) : (
+                                  <span>{String(value ?? '(empty)')}</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               </div>

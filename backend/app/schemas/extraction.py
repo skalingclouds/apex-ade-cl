@@ -25,3 +25,25 @@ class ExtractionResponse(BaseModel):
     extracted_data: Optional[Dict[str, Any]] = None
     markdown: Optional[str] = None
     error: Optional[str] = None
+
+# Saved schema DTOs
+class SavedSchemaCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    fields: List[FieldInfo]
+
+class SavedSchemaResponse(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    fields: List[FieldInfo]
+    is_active: bool
+    created_at: Any
+    updated_at: Any
+
+class BatchProcessRequest(BaseModel):
+    document_ids: List[int]
+    schema_id: Optional[int] = None
+    selected_fields: Optional[List[str]] = None
+    custom_fields: Optional[List[FieldInfo]] = None
+    concurrency: Optional[int] = 4

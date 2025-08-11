@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { X, Loader, Plus } from 'lucide-react'
-import { FieldInfo } from '../services/api'
+import { FieldInfo, listSchemas, createSchema, SavedSchema } from '../services/api'
 
 interface FieldSelectorProps {
   fields: FieldInfo[]
@@ -17,6 +17,32 @@ export default function FieldSelector({ fields, onSelect, onClose, isLoading }: 
   const [showAddCustom, setShowAddCustom] = useState(false)
   const [customFieldName, setCustomFieldName] = useState('')
   const [customFieldDescription, setCustomFieldDescription] = useState('')
+
+  // Schema library state
+  const [schemas, setSchemas] = useState<SavedSchema[]>([])
+  const [loadingSchemas, setLoadingSchemas] = useState(false)
+  const [selectedSchemaId, setSelectedSchemaId] = useState<number | ''>('')
+  const [showSaveSchema, setShowSaveSchema] = useState(false)
+  const [schemaName, setSchemaName] = useState('')
+  const [schemaDesc, setSchemaDesc] = useState('')
+  const [savingSchema, setSavingSchema] = useState(false)
+
+  useEffect(() => {
+    let mounted = true
+    const load = async () => {
+      try {
+        setLoadingSchemas(true)
+        const data = await listSchemas()
+        if (mounted) setSchemas(data)
+      } catch (e) {
+        // noop
+      } finally {
+        if (mounted) setLoadingSchemas(false)
+      }
+    }
+    load()
+    return () => { mounted = false }
+  }, [])
 
   const toggleField = (fieldName: string) => {
     setSelectedFields(prev =>
@@ -62,6 +88,65 @@ export default function FieldSelector({ fields, onSelect, onClose, isLoading }: 
     }
   }
 
+  const handleLoadSchema = () => {
+    const schema = schemas.find(s => s.id === selectedSchemaId)
+    if (!schema) return
+    const names = schema.fields.map(f => f.name)
+    setSelectedFields(names)
+    // Use schema fields as custom metadata to propagate descriptions/types
+    setCustomFields(schema.fields.map(f => ({
+      name: f.name,
+      type: f.type || 'string',
+      description: f.description || f.name.replace(/_/g, ' '),
+      required: false
+    })))
+  }
+
+  const handleSaveSchema = async () => {
+    if (!schemaName.trim()) return
+    try {
+      setSavingSchema(true)
+      // Build FieldInfo list from current selection + custom fields
+      const fieldMap = new Map<string, FieldInfo>()
+      // from suggested fields list
+      for (const f of fields) {
+        if (selectedFields.includes(f.name)) {
+          fieldMap.set(f.name, f)
+        }
+      }
+      // add any selected that weren't in suggested
+      for (const name of selectedFields) {
+        if (!fieldMap.has(name)) {
+          fieldMap.set(name, {
+            name,
+            type: 'string',
+            description: name.replace(/_/g, ' '),
+            required: false
+          })
+        }
+      }
+      // merge custom fields (override to preserve description)
+      for (const cf of customFields) {
+        fieldMap.set(cf.name, cf)
+      }
+      const payload = {
+        name: schemaName.trim(),
+        description: schemaDesc.trim() || undefined,
+        fields: Array.from(fieldMap.values())
+      }
+      const created = await createSchema(payload)
+      setSchemas(prev => [created, ...prev])
+      setShowSaveSchema(false)
+      setSchemaName('')
+      setSchemaDesc('')
+      setSelectedSchemaId(created.id)
+    } catch (e) {
+      // noop
+    } finally {
+      setSavingSchema(false)
+    }
+  }
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4">
       <div className="bg-dark-800 rounded-lg max-w-2xl w-full max-h-[80vh] flex flex-col">
@@ -81,9 +166,74 @@ export default function FieldSelector({ fields, onSelect, onClose, isLoading }: 
           </button>
         </div>
 
-        {/* Field List */}
+        {/* Field List + Schema Library */}
         <div className="flex-1 overflow-y-auto p-6">
           <div className="space-y-4">
+            {/* Schema Library */}
+            <div className="p-4 rounded-lg bg-dark-700 border border-dark-600">
+              <div className="flex flex-col md:flex-row md:items-end gap-3">
+                <div className="flex-1">
+                  <label className="block text-xs font-medium text-gray-300 mb-1">Load Saved Schema</label>
+                  <select
+                    className="w-full px-3 py-2 bg-dark-800 border border-dark-600 rounded-lg text-sm"
+                    value={selectedSchemaId}
+                    onChange={(e) => setSelectedSchemaId(e.target.value ? Number(e.target.value) : '')}
+                    disabled={loadingSchemas}
+                  >
+                    <option value="">Select a schema...</option>
+                    {schemas.map(s => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  onClick={handleLoadSchema}
+                  disabled={!selectedSchemaId || loadingSchemas}
+                  className="px-3 py-2 bg-dark-600 text-gray-200 text-sm rounded-lg hover:bg-dark-500 disabled:opacity-50"
+                >
+                  Load
+                </button>
+                <button
+                  onClick={() => setShowSaveSchema(v => !v)}
+                  className="px-3 py-2 bg-accent-green text-black text-sm rounded-lg hover:bg-accent-green/90"
+                >
+                  {showSaveSchema ? 'Cancel Save' : 'Save Current as Schema'}
+                </button>
+              </div>
+
+              {showSaveSchema && (
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="md:col-span-1">
+                    <label className="block text-xs font-medium text-gray-300 mb-1">Schema Name</label>
+                    <input
+                      value={schemaName}
+                      onChange={(e) => setSchemaName(e.target.value)}
+                      placeholder="e.g., Opt-in Form"
+                      className="w-full px-3 py-2 bg-dark-800 border border-dark-600 rounded-lg text-sm"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-medium text-gray-300 mb-1">Description</label>
+                    <input
+                      value={schemaDesc}
+                      onChange={(e) => setSchemaDesc(e.target.value)}
+                      placeholder="Optional"
+                      className="w-full px-3 py-2 bg-dark-800 border border-dark-600 rounded-lg text-sm"
+                    />
+                  </div>
+                  <div className="md:col-span-3 flex justify-end">
+                    <button
+                      onClick={handleSaveSchema}
+                      disabled={!schemaName.trim() || savingSchema}
+                      className="px-3 py-2 bg-accent-green text-black text-sm rounded-lg hover:bg-accent-green/90 disabled:opacity-50"
+                    >
+                      {savingSchema ? 'Saving...' : 'Save Schema'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* AI-Generated Fields */}
             <div>
               <h3 className="text-sm font-semibold text-gray-300 mb-3">AI-Suggested Fields</h3>

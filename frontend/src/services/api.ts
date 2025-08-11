@@ -66,13 +66,80 @@ export interface DocumentListResponse {
 
 export interface DocumentStats {
   total: number
+  pending: number
+  completed: number
+  failed: number
+  successful: number
+  completionRate: number
+}
+
 // -----------------------
 //  Upload helpers
 // -----------------------
 const uploadLocal = async (payload: UploadPayload): Promise<Document> => {
-  failed: number
-  completionRate: number
-  successful: number
+  // Use XMLHttpRequest with proper timeout and progress handling for large files
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+
+    // Build form data
+    const formData = new FormData()
+    formData.append('file', payload.file)
+
+    xhr.open('POST', `${API_BASE_URL}/documents/upload`)
+
+    // Set a very long timeout for large files (30 minutes)
+    xhr.timeout = 30 * 60 * 1000 // 30 minutes in milliseconds
+
+    // Don't set Content-Type header - let browser handle it for multipart
+
+    // Add upload progress tracking
+    xhr.upload.onprogress = function (event) {
+      if (event.lengthComputable) {
+        // Optional: could emit progress updates
+      }
+    }
+
+    xhr.onload = function () {
+      if (xhr.status === 200) {
+        try {
+          resolve(JSON.parse(xhr.responseText))
+        } catch (e) {
+          reject(new Error('Invalid response from server'))
+        }
+      } else if (xhr.status === 413) {
+        reject(new Error('File too large. Maximum size is 1GB'))
+      } else {
+        try {
+          const error = JSON.parse(xhr.responseText)
+          reject(
+            new Error(
+              error.detail || error.detail?.[0]?.msg || 'Upload failed'
+            )
+          )
+        } catch (e) {
+          reject(new Error(`Upload failed with status ${xhr.status}`))
+        }
+      }
+    }
+
+    xhr.onerror = function () {
+      reject(new Error('Network error - check your connection'))
+    }
+
+    xhr.ontimeout = function () {
+      reject(new Error('Upload timeout - file may be too large or connection too slow'))
+    }
+
+    xhr.onabort = function () {
+      reject(new Error('Upload was canceled'))
+    }
+
+    try {
+      xhr.send(formData)
+    } catch (e) {
+      reject(new Error('Failed to start upload'))
+    }
+  })
 }
 
 export interface ParseResponse {
@@ -86,6 +153,17 @@ export interface FieldInfo {
   type: string
   description?: string
   required: boolean
+}
+
+// Saved schema types
+export interface SavedSchema {
+  id: number
+  name: string
+  description?: string
+  fields: FieldInfo[]
+  is_active: boolean
+  created_at: string
+  updated_at: string
 }
 
 export interface ExtractionResponse {
@@ -115,108 +193,7 @@ interface UploadPayload {
 }
 
 // API functions
-export const uploadDocument = async (payload: UploadPayload): Promise<Document> => {
-  console.log('=== UPLOAD DEBUG ===')
-  console.log('File:', payload.file)
-  console.log('File name:', payload.file.name)
-  console.log('File type:', payload.file.type)
-  console.log('File size:', payload.file.size)
-  
-  // Create FormData and verify it's not being modified
-  const formData = new FormData()
-  formData.append('file', payload.file)
-  
-  // Log FormData to ensure it contains the file
-  console.log('FormData entries:')
-  for (let [key, value] of formData.entries()) {
-    console.log(`  ${key}:`, value)
-    console.log(`  Value type:`, typeof value)
-    console.log(`  Is File:`, value instanceof File)
-  }
-  
-  // Check if FormData is being overridden
-  console.log('FormData constructor:', FormData)
-  console.log('FormData.prototype:', FormData.prototype)
-  
-  // Use XMLHttpRequest with proper timeout and progress handling for large files
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest()
-    
-    // Log the actual request
-    const originalSend = xhr.send
-    xhr.send = function(data: any) {
-      console.log('XHR send called with:', data)
-      console.log('Data type:', typeof data)
-      console.log('Is FormData:', data instanceof FormData)
-      console.log('File size in MB:', payload.file.size / (1024 * 1024))
-      return originalSend.call(this, data)
-    }
-    
-    xhr.open('POST', `${API_BASE_URL}/documents/upload`)
-    
-    // Set a very long timeout for large files (30 minutes)
-    xhr.timeout = 30 * 60 * 1000 // 30 minutes in milliseconds
-    
-    // Don't set Content-Type header - let browser handle it for multipart
-    
-    // Add upload progress tracking
-    xhr.upload.onprogress = function(event) {
-      if (event.lengthComputable) {
-        const percentComplete = (event.loaded / event.total) * 100
-        console.log(`Upload progress: ${percentComplete.toFixed(2)}%`)
-        // You could emit this progress to update UI if needed
-      }
-    }
-    
-    xhr.onload = function() {
-      console.log('Response status:', xhr.status)
-      console.log('Response:', xhr.responseText)
-      
-      if (xhr.status === 200) {
-        try {
-          resolve(JSON.parse(xhr.responseText))
-        } catch (e) {
-          console.error('Failed to parse response:', e)
-          reject(new Error('Invalid response from server'))
-        }
-      } else if (xhr.status === 413) {
-        reject(new Error('File too large. Maximum size is 1GB'))
-      } else {
-        try {
-          const error = JSON.parse(xhr.responseText)
-          reject(new Error(error.detail || error.detail?.[0]?.msg || 'Upload failed'))
-        } catch (e) {
-          reject(new Error(`Upload failed with status ${xhr.status}`))
-        }
-      }
-    }
-    
-    xhr.onerror = function() {
-      console.error('XHR error event fired')
-      reject(new Error('Network error - check your connection'))
-    }
-    
-    xhr.ontimeout = function() {
-      console.error('XHR timeout after 30 minutes')
-      reject(new Error('Upload timeout - file may be too large or connection too slow'))
-    }
-    
-    xhr.onabort = function() {
-      console.error('XHR aborted')
-      reject(new Error('Upload was canceled'))
-    }
-    
-    console.log('Sending FormData with file:', payload.file.name)
-    console.log('File size:', payload.file.size, 'bytes')
-    
-    try {
-      xhr.send(formData)
-    } catch (e) {
-      console.error('Failed to send request:', e)
-      reject(new Error('Failed to start upload'))
-    }
-  })
-}
+// (uploadLocal implemented above)
 
 /**
  * Azure Blob upload flow:
@@ -373,6 +350,17 @@ export const getDocumentPdf = (id: number): string => {
 
 export const getDocumentMarkdown = async (id: number): Promise<{ markdown: string; processed_at: string }> => {
   const response = await api.get(`/documents/${id}/markdown`)
+  return response.data
+}
+
+// Schemas API
+export const listSchemas = async (): Promise<SavedSchema[]> => {
+  const response = await api.get(`/schemas/`)
+  return response.data
+}
+
+export const createSchema = async (payload: { name: string; description?: string; fields: FieldInfo[] }): Promise<SavedSchema> => {
+  const response = await api.post(`/schemas/`, payload)
   return response.data
 }
 

@@ -1,4 +1,4 @@
-#!/Users/chris/ai/naitiveade/.conductor/valletta/apex-ade-cl/scripts/venv/bin/python3
+#!/Users/chris/ai/apex-ade-cl-v2/scripts/venv/bin/python3
 
 import sys
 import json

@@ -37,7 +37,7 @@ deactivate () {
 # unset irrelevant variables
 deactivate nondestructive
 
-VIRTUAL_ENV="/Users/chris/ai/naitiveade/.conductor/valletta/apex-ade-cl/scripts/venv"
+VIRTUAL_ENV="/Users/chris/ai/apex-ade-cl-v2/scripts/venv"
 export VIRTUAL_ENV
 
 _OLD_VIRTUAL_PATH="$PATH"

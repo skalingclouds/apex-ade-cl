@@ -10,7 +10,7 @@ from app.core.database import get_db
 from app.core.config import settings
 from app.models.document import Document, DocumentStatus
 from app.schemas.document import DocumentResponse, DocumentListResponse, DocumentUpdate, RejectRequest, EscalateRequest
-from app.schemas.extraction import ParseResponse, FieldInfo, ExtractionRequest
+from app.schemas.extraction import ParseResponse, FieldInfo, ExtractionRequest, BatchProcessRequest
 from app.services.audit_service import AuditService
 from app.services.analytics_service import AnalyticsService
 
@@ -305,89 +305,14 @@ def get_parsed_fields(
         }
     )
 
-@router.post("/{document_id}/parse", response_model=ParseResponse)
-async def parse_document(
-    request: Request,
-    document_id: int,
-    db: Session = Depends(get_db)
-):
-    """Parse document to detect extractable fields"""
-    document = db.query(Document).filter(Document.id == document_id).first()
-    if not document:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Document not found"
-        )
-    
-    # Check if document is ready for parsing - allow re-parsing of extracted documents
-    if document.status not in [DocumentStatus.PENDING, DocumentStatus.FAILED, DocumentStatus.EXTRACTED, DocumentStatus.PARSED]:
-        if document.status == DocumentStatus.CHUNKING:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Document is still being chunked. Please wait."
-            )
-        elif document.status in [DocumentStatus.EXTRACTING]:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Document is already being processed."
-            )
-    
-    # For chunked documents, use the first chunk for field detection
-    file_to_parse = document.filepath
-    if document.is_chunked:
-        # Get the first chunk for field detection
-        from app.models.document_chunk import DocumentChunk
-        first_chunk = db.query(DocumentChunk).filter(
-            DocumentChunk.document_id == document_id
-        ).order_by(DocumentChunk.chunk_number).first()
-        
-        if first_chunk:
-            file_to_parse = first_chunk.file_path
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No chunks found for document"
-            )
-    
-    # Use Landing.AI service to detect fields
-    from app.services.simple_landing_ai_service import SimpleLandingAIService
-    service = SimpleLandingAIService()
-    
-    # Parse the document to get markdown and detect fields
-    import asyncio
-    loop = asyncio.get_event_loop()
-    
-    # For opt-in forms, we'll suggest the standard fields
-    from app.models.extraction_models import OptInFormExtraction
-    
-    # Convert Pydantic model fields to FieldInfo format
-    fields = []
-    for field_name, field_obj in OptInFormExtraction.__fields__.items():
-        fields.append(FieldInfo(
-            name=field_name,
-            type="string" if field_obj.type_ != bool else "boolean",
-            description=field_obj.field_info.description or field_name.replace('_', ' ').title(),
-            required=field_obj.required
-        ))
-    
-    # Save parsed fields to database for later retrieval
-    import json
-    document.parsed_fields = json.dumps([field.dict() for field in fields])
-    document.status = DocumentStatus.PARSED
-    db.commit()
-    
-    # Return the suggested fields for user selection
-    return ParseResponse(
-        document_id=document_id,
-        fields=fields,
-        markdown="",  # We don't need to return the full markdown here
-        metadata={
-            "source": "OptInFormExtraction model",
-            "total_pages": document.page_count,
-            "is_chunked": document.is_chunked,
-            "total_chunks": document.total_chunks
-        }
-    )
+"""
+NOTE: Duplicate parse endpoint removed.
+Authoritative parse route lives in `app/api/endpoints/extraction.py` at
+POST /api/v1/documents/{document_id}/parse.
+
+Keeping a single route avoids FastAPI OpenAPI duplicate operation_id warnings
+and eliminates ambiguity about which implementation is used.
+"""
 
 @router.post("/{document_id}/process", response_model=DocumentResponse)
 async def process_document(
@@ -535,6 +460,97 @@ async def process_document_with_model(document_id: int):
             document.status = DocumentStatus.FAILED
             document.error_message = str(e)
             db.commit()
+    finally:
+        db.close()
+
+@router.post("/batch/process")
+def batch_process_documents(
+    request: Request,
+    payload: BatchProcessRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    """Kick off batch processing for a set of documents.
+    Uses selected_fields/custom_fields or a saved schema.
+    """
+    doc_ids = list(set(payload.document_ids or []))
+    if not doc_ids:
+        raise HTTPException(status_code=400, detail="No documents provided")
+
+    selected_fields: List[str] = payload.selected_fields or []
+    custom_fields: List[dict] = []
+    if payload.custom_fields:
+        custom_fields = [cf.dict() for cf in payload.custom_fields]
+
+    if payload.schema_id:
+        from app.models.saved_schema import SavedSchema
+        rec = db.query(SavedSchema).filter(SavedSchema.id == payload.schema_id, SavedSchema.is_active == True).first()
+        if not rec:
+            raise HTTPException(status_code=404, detail="Schema not found")
+        import json
+        fields = [FieldInfo(**f) for f in json.loads(rec.fields_json)]
+        selected_fields = [f.name for f in fields]
+        # propagate descriptions as custom field metadata so dynamic model has rich hints
+        custom_fields = [dict(name=f.name, type=f.type, description=f.description or f.name.replace('_',' ')) for f in fields]
+
+    if not selected_fields:
+        raise HTTPException(status_code=400, detail="No fields specified for extraction")
+
+    # Start background batch
+    background_tasks.add_task(_run_batch_processing, doc_ids, selected_fields, custom_fields)
+    return {"queued": len(doc_ids), "selected_fields": selected_fields}
+
+
+def _run_batch_processing(doc_ids: List[int], selected_fields: List[str], custom_fields: List[dict]):
+    from app.core.database import SessionLocal
+    from app.services.chunk_processor_optimized import OptimizedChunkProcessor
+    from app.models.document import Document
+    import asyncio
+
+    db = SessionLocal()
+    try:
+        processor = OptimizedChunkProcessor(db)
+
+        async def process_one(doc: Document):
+            try:
+                if doc.is_chunked:
+                    await processor.process_document_chunks(
+                        document=doc,
+                        selected_fields=selected_fields,
+                        custom_fields=custom_fields
+                    )
+                else:
+                    # Reuse existing single-document flow
+                    from app.services.simple_landing_ai_service import SimpleLandingAIService
+                    svc = SimpleLandingAIService()
+                    result = await svc.extract_document(doc.filepath, selected_fields, custom_fields)
+                    import json as _json
+                    doc.extracted_data = _json.dumps(result.data)
+                    doc.extracted_md = result.markdown
+                    from app.models.document import DocumentStatus
+                    doc.status = DocumentStatus.EXTRACTED
+                    db.commit()
+            except Exception:
+                from app.models.document import DocumentStatus
+                doc.status = DocumentStatus.FAILED
+                db.commit()
+
+        async def runner():
+            tasks = []
+            # naive concurrency control
+            sem = asyncio.Semaphore(4)
+
+            async def wrapped(d: Document):
+                async with sem:
+                    await process_one(d)
+
+            docs = db.query(Document).filter(Document.id.in_(doc_ids)).all()
+            for d in docs:
+                tasks.append(asyncio.create_task(wrapped(d)))
+            if tasks:
+                await asyncio.gather(*tasks)
+
+        asyncio.run(runner())
     finally:
         db.close()
 
