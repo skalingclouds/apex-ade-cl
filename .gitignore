@@ -284,3 +284,5 @@ cython_debug/
 
 # macOS
 .DS_Store
+/scripts/venv
+/scripts/venv

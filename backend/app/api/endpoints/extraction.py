@@ -156,6 +156,7 @@ async def extract_document_data(
         if field_name not in field_definitions:
             field_definitions[field_name] = (Optional[str], Field(None, description=f"Field: {field_name}"))
     
+    # Keep DynamicModel available for structured model path if needed later
     DynamicModel = create_model('DynamicExtractionModel', **field_definitions)
     
     # Save extraction schema
@@ -178,12 +179,14 @@ async def extract_document_data(
     db.commit()
     
     try:
-        # Extract data using simplified landing.ai SDK service
+        # Extract data using Landing.AI service
+        # Note: The extraction service builds its own dynamic model from
+        # selected_fields and custom_fields. We pass field lists here.
         service = SimpleLandingAIService()
         extraction_result = await service.extract_document(
             document.filepath,
-            DynamicModel,
-            extraction_request.selected_fields
+            extraction_request.selected_fields,
+            [cf.dict() for cf in (extraction_request.custom_fields or [])] if hasattr(extraction_request.custom_fields, '__iter__') else extraction_request.custom_fields
         )
         
         # Update document with results

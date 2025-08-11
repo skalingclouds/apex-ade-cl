@@ -697,15 +697,18 @@ class SimpleLandingAIService:
                 extracted_data = self._extract_fields_using_openai(markdown_content, all_fields_for_extraction)
                 extraction_method = "OPENAI_FALLBACK"
             
+            # Normalize extracted keys to snake_case to match selected_fields
+            normalized_extracted = self._normalize_extracted_keys(extracted_data)
+
             # Filter to only include requested fields (both selected and custom)
-            all_requested_fields = list(selected_fields)
-            if custom_fields:
-                all_requested_fields.extend([f['name'] for f in custom_fields])
-            
-            filtered_data = {
-                field: extracted_data.get(field, None) 
-                for field in all_requested_fields
-            }
+            all_requested_fields = list({*selected_fields, *([f['name'] for f in custom_fields] if custom_fields else [])})
+            filtered_data = {field: normalized_extracted.get(field, None) for field in all_requested_fields}
+
+            # Heuristic: if apex_id is still empty but markdown contains a likely Apex ID pattern, extract it
+            if 'apex_id' in filtered_data and (filtered_data['apex_id'] is None or str(filtered_data['apex_id']).strip() == ''):
+                extracted_apex = self._extract_apex_id_from_markdown(markdown_content)
+                if extracted_apex:
+                    filtered_data['apex_id'] = extracted_apex
             
             # Extract chunk telemetry with bounding boxes if available
             chunks_with_telemetry = []
@@ -783,3 +786,35 @@ class SimpleLandingAIService:
                     markdown=f"Extraction failed: {str(e)}",
                     processed_at=datetime.now()
                 )
+
+    def _normalize_extracted_keys(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Normalize keys from various formats to snake_case to match selected_fields.
+        Ex: "Apex ID" -> "apex_id", "ApexId" -> "apex_id".
+        """
+        if not data:
+            return {}
+        def to_snake(s: str) -> str:
+            import re
+            s = s.replace('-', ' ').replace('/', ' ').strip()
+            s = re.sub(r"[^A-Za-z0-9\s]", "", s)
+            s = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", s)
+            s = re.sub(r"\s+", "_", s)
+            return s.lower()
+        return {to_snake(k): v for k, v in data.items()}
+
+    def _extract_apex_id_from_markdown(self, markdown: str) -> Optional[str]:
+        """Extract Apex ID from markdown using robust patterns.
+        Prioritize IDs beginning with 25USOA..., fallback to generic alphanum.
+        """
+        if not markdown:
+            return None
+        import re
+        # Specific pattern mentioned by stakeholders
+        m = re.search(r"\b(?:apex\s*id[:#\s]*)?(25USOA[0-9A-Z-]+)\b", markdown, re.IGNORECASE)
+        if m:
+            return m.group(1)
+        # Generic fallback near 'Apex ID' label
+        m = re.search(r"\bapex\s*id[:#\s]*([A-Z0-9-]{5,})\b", markdown, re.IGNORECASE)
+        if m:
+            return m.group(1)
+        return None

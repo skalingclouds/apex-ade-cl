@@ -10,6 +10,7 @@ from app.api.endpoints import (
     document_management,
     chunks,
     uploads,  # NEW: direct Azure upload helpers
+    schemas as saved_schemas,
 )
 
 api_router = APIRouter()
@@ -24,3 +25,4 @@ api_router.include_router(chunks.router, prefix="/documents", tags=["chunks"])
 api_router.include_router(export.router, prefix="/documents", tags=["export"])
 api_router.include_router(documents.router, prefix="/documents", tags=["documents"])
 api_router.include_router(analytics.router, prefix="/analytics", tags=["analytics"])
+api_router.include_router(saved_schemas.router, prefix="/schemas", tags=["schemas"])

@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     
     # OpenAI settings for GPT-4.1
     OPENAI_API_KEY: str = ""
-    OPENAI_MODEL: str = "gpt-4-turbo-preview"  # GPT-4.1 model identifier
+    OPENAI_MODEL: str = "gpt-5"  # Default to current GPT-5 model identifier
     OPENAI_MAX_TOKENS: int = 4096
     OPENAI_TEMPERATURE: float = 0.7
     

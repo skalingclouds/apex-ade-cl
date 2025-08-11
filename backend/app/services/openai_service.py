@@ -1,5 +1,5 @@
 """
-OpenAI GPT-4.1 Chat Service for document-based Q&A with contextual highlighting
+OpenAI GPT-5 Chat Service for document-based Q&A with contextual highlighting
 """
 import json
 import logging
@@ -41,7 +41,7 @@ class OpenAIService:
         include_history: bool = True
     ) -> Dict[str, Any]:
         """
-        Chat with a document using GPT-4.1 and return response with highlight mappings.
+         Chat with a document using GPT-5 and return response with highlight mappings.
         
         Args:
             db: Database session
@@ -72,8 +72,8 @@ class OpenAIService:
             if include_history:
                 history_context = self._get_chat_history(db, document.id, limit=5)
             
-            # Build the prompt for GPT-4.1
-            # Using specific prompt structure for GPT-4.1's literal instruction following
+            # Build the prompt for GPT-5
+            # Using instruction-following structure
             system_prompt = self._build_system_prompt()
             user_prompt = self._build_user_prompt(query, context, history_context)
             
@@ -168,8 +168,7 @@ class OpenAIService:
     
     def _build_system_prompt(self) -> str:
         """
-        Build system prompt optimized for GPT-4.1's capabilities.
-        Leverages its 1M context window and literal instruction following.
+        Build system prompt optimized for GPT-5 capabilities.
         """
         return """You are an advanced document analysis assistant powered by GPT-4.1.
 You have access to the complete content of a document with chunk markers that indicate specific sections.
