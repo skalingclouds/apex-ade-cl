@@ -224,7 +224,7 @@ interface HighlightArea {
 **Environment Variables** (`.env`):
 ```
 OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-4-turbo-preview
+OPENAI_MODEL=gpt-5-2025-08-07
 OPENAI_MAX_TOKENS=1000
 OPENAI_TEMPERATURE=0.7
 ```
