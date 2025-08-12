@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 class OpenAIService:
     """
-    Service for handling OpenAI GPT-4.1 chat interactions with document context.
+    Service for handling OpenAI GPT-5 chat interactions with document context.
     Integrates with Landing.AI chunk telemetry for precise PDF highlighting.
     """
     
@@ -170,7 +170,7 @@ class OpenAIService:
         """
         Build system prompt optimized for GPT-5 capabilities.
         """
-        return """You are an advanced document analysis assistant powered by GPT-4.1.
+        return """You are an advanced document analysis assistant powered by GPT-5.
 You have access to the complete content of a document with chunk markers that indicate specific sections.
 
 Your task is to answer questions about the document content accurately and provide references to the specific chunks that support your answer.
@@ -215,7 +215,7 @@ CRITICAL INSTRUCTIONS (Follow these literally):
     
     def _parse_gpt_response(self, content: str) -> Dict[str, Any]:
         """
-        Parse GPT-4.1 response and extract structured data.
+        Parse GPT-5 response and extract structured data.
         """
         try:
             # Try to parse as JSON

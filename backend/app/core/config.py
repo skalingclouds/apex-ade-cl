@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     # Landing.ai SDK
     VISION_AGENT_API_KEY: str = ""
     
-    # OpenAI settings for GPT-4.1
+    # OpenAI settings for GPT-5
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-5"  # Default to current GPT-5 model identifier
     OPENAI_MAX_TOKENS: int = 4096

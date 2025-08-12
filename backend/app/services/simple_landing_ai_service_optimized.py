@@ -346,7 +346,7 @@ For fields not found, use null. Example:
         
         try:
             response = client.chat.completions.create(
-                model=settings.OPENAI_MODEL or "gpt-4-turbo-preview",
+                model=settings.OPENAI_MODEL,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0,
                 max_tokens=2000

@@ -100,7 +100,7 @@ class SimpleLandingAIService:
         """
         
         response = client.chat.completions.create(
-            model=settings.OPENAI_MODEL or "gpt-4-turbo-preview",
+            model=settings.OPENAI_MODEL,
             messages=[
                 {"role": "system", "content": "You are a document analysis expert. Analyze documents and suggest relevant fields to extract based on the actual content present."},
                 {"role": "user", "content": prompt}
@@ -260,13 +260,13 @@ class SimpleLandingAIService:
             """
             
             response = client.chat.completions.create(
-                model=settings.OPENAI_MODEL or "gpt-4-turbo-preview",
+                model=settings.OPENAI_MODEL,
                 messages=[
                     {"role": "system", "content": "You are a data extraction expert. Extract specific fields from documents and return them as JSON. When a field appears multiple times in the document, return ALL occurrences as an array. Pay special attention to identifiers like 'Apex ID:' which may appear with various formats and capitalizations."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.1,  # Low temperature for accurate extraction
-                max_tokens=2000  # Increased for larger arrays
+                max_tokens=6000  # Increased for larger arrays
             )
             
             # Parse the response
@@ -559,9 +559,31 @@ class SimpleLandingAIService:
             
             # Add selected fields (from OptInFormExtraction model)
             for field_name in selected_fields:
-                # Create more descriptive field descriptions for better extraction
-                field_desc = f"Extract the {field_name.replace('_', ' ')} from the document. Look for text, labels, or sections that indicate '{field_name.replace('_', ' ')}' or similar variations."
-                field_definitions[field_name] = (Optional[str], Field(default=None, description=field_desc))
+                # Heuristic type inference for better extraction quality
+                lname = field_name.lower()
+                python_type: Any = str
+                if lname in {"amount", "total", "gross_pay", "net_pay"}:
+                    python_type = float
+                elif lname.endswith("_amount") or lname.endswith("_total"):
+                    python_type = float
+                elif lname in {"amounts", "totals"}:
+                    from typing import List as _List
+                    python_type = _List[float]
+                elif lname in {"emails", "email_addresses"}:
+                    from typing import List as _List
+                    python_type = _List[str]
+                elif lname in {"dates"} or lname.endswith("_dates"):
+                    from typing import List as _List
+                    python_type = _List[str]
+                elif lname in {"parties", "names"}:
+                    from typing import List as _List
+                    python_type = _List[str]
+
+                # Create descriptive field hint
+                pretty = field_name.replace('_', ' ')
+                field_desc = f"Extract {pretty}. Use values present in the document; do not invent."
+
+                field_definitions[field_name] = (Optional[python_type], Field(default=None, description=field_desc))
             
             # Add custom fields
             if custom_fields:
@@ -676,14 +698,18 @@ class SimpleLandingAIService:
             # Check if Landing.AI extraction was successful for the selected fields
             # If not, use OpenAI to extract the specific fields
             needs_openai_extraction = False
-            if not extracted_data:
+            # Normalize keys for checking requested field population
+            normalized_for_check = self._normalize_extracted_keys(extracted_data) if extracted_data else {}
+
+            # Determine if OpenAI fallback is needed based on requested fields specifically
+            all_requested_fields = list({*selected_fields, *([f['name'] for f in custom_fields] if custom_fields else [])})
+            if not normalized_for_check:
                 logger.info("No extraction data from Landing.AI, will use OpenAI")
                 needs_openai_extraction = True
             else:
-                # Check if we got meaningful data (not just full_content)
-                non_null_fields = [k for k, v in extracted_data.items() if v is not None and k != 'full_content']
-                if len(non_null_fields) == 0:
-                    logger.info("Landing.AI only returned full_content, will use OpenAI for specific fields")
+                non_null_requested = [f for f in all_requested_fields if normalized_for_check.get(f) not in (None, "", [])]
+                if len(non_null_requested) == 0:
+                    logger.info("Requested fields not populated by Landing.AI. Using OpenAI fallback for specific fields.")
                     needs_openai_extraction = True
             
             # Track which extraction method was ultimately used
