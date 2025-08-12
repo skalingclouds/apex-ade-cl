@@ -375,6 +375,18 @@ async def process_document_with_fields(document_id: int, selected_fields: List[s
         if not document:
             raise ValueError(f"Document {document_id} not found")
         
+        # Normalize custom_fields to list[dict]
+        norm_custom = []
+        if custom_fields:
+            for cf in custom_fields:
+                try:
+                    norm_custom.append(cf if isinstance(cf, dict) else cf.dict())
+                except Exception:
+                    norm_custom.append({
+                        "name": getattr(cf, "name", None),
+                        "type": getattr(cf, "type", "string"),
+                        "description": getattr(cf, "description", None)
+                    })
         # Check if document is chunked
         if document.is_chunked:
             # Process chunks for large documents
@@ -382,7 +394,7 @@ async def process_document_with_fields(document_id: int, selected_fields: List[s
             await processor.process_document_chunks(
                 document=document,
                 selected_fields=selected_fields,
-                custom_fields=custom_fields
+                custom_fields=norm_custom
             )
         else:
             # Process directly for small documents
@@ -390,7 +402,7 @@ async def process_document_with_fields(document_id: int, selected_fields: List[s
             extraction_result = await service.extract_document(
                 file_path=document.filepath,
                 selected_fields=selected_fields,
-                custom_fields=custom_fields
+                custom_fields=norm_custom
             )
             
             # Update document with extracted data from the ExtractionResult object
