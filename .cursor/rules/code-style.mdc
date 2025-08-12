@@ -1,0 +1,48 @@
+---
+alwaysApply: true
+---
+# Code Style Guidelines
+
+## General
+- Use descriptive variable names
+- Add type hints (Python) and interfaces (TypeScript)
+- Document complex logic with comments
+- Keep functions focused and small
+
+## Python (Backend)
+- Follow PEP 8 style guide
+- Use async/await for I/O operations
+- Type hints for all function parameters
+- Docstrings for public functions
+```python
+async def process_document(
+    document_id: int,
+    fields: List[str]
+) -> ExtractionResult:
+    """Process document with selected fields."""
+    # Implementation
+```
+
+## TypeScript (Frontend)
+- Strict mode enabled
+- Explicit return types
+- Const assertions where applicable
+- Destructuring for props
+```typescript
+const processData = async (
+  id: number,
+  options: ProcessOptions
+): Promise<ProcessResult> => {
+  // Implementation
+}
+```
+
+## Git Commits
+- Descriptive commit messages
+- Reference issue numbers
+- Group related changes
+
+## Error Messages
+- User-friendly descriptions
+- Include actionable steps
+- Log technical details separately

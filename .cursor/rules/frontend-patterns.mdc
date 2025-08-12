@@ -1,0 +1,45 @@
+---
+globs: frontend/**/*.ts,frontend/**/*.tsx
+---
+# Frontend Development Patterns
+
+## React Components
+- Use functional components with TypeScript
+- Hooks: useState, useEffect, useQuery (React Query)
+- Props interfaces defined above component
+- Example:
+```typescript
+interface ComponentNameProps {
+  id: number
+  onAction: (value: string) => void
+}
+
+export default function ComponentName({ id, onAction }: ComponentNameProps) {
+  // Component logic
+}
+```
+
+## State Management
+- React Query for server state
+- Local state with useState for UI state
+- Query keys pattern: `['resource', id, params]`
+
+## API Integration
+- All API calls through [frontend/src/services/api.ts](mdc:frontend/src/services/api.ts)
+- Use axios interceptors for error handling
+- Handle loading, error, and success states
+
+## Styling
+- Tailwind CSS for all styling
+- Dark mode by default with theme toggle
+- Utility-first approach, minimal custom CSS
+
+## Error Handling
+- Display errors with [frontend/src/components/ErrorDisplay.tsx](mdc:frontend/src/components/ErrorDisplay.tsx)
+- Toast notifications for success/error feedback
+- Graceful fallbacks for failed API calls
+
+## TypeScript
+- Strict mode enabled
+- Define interfaces for all API responses
+- Avoid `any` type - use proper types or `unknown`

@@ -1,0 +1,39 @@
+---
+description: Rules for handling Landing.ai markdown output and table formatting
+---
+# Markdown Processing Rules
+
+## Landing.ai Output
+- Contains HTML comments with metadata: `<!-- text, from page X -->`
+- Has ID markers: `{#id-string}`
+- May include HTML tables that need conversion
+- Always clean before displaying
+
+## Cleaning Process
+1. Remove all HTML comments
+2. Strip ID markers and data-id attributes
+3. Convert HTML tables to markdown
+4. Normalize table formatting
+5. Clean excessive whitespace
+
+## Table Formatting
+- ALWAYS display extracted data as clean 2-column tables
+- Format: Field Name | Value
+- Use markdown table syntax with proper alignment
+- Handle empty values gracefully
+
+## Frontend Display
+- Always use `prepareMarkdownForDisplay()` before rendering
+- Use ReactMarkdown with remarkGfm plugin
+- Apply consistent table styling with Tailwind
+
+## Key Functions
+- Backend: Clean markdown before storing
+- Frontend: [enhancedMarkdownUtils.ts](mdc:frontend/src/utils/enhancedMarkdownUtils.ts)
+- Always validate table structure
+
+## Display Rules
+- Never show raw JSON to users
+- Always format as readable tables
+- Preserve original formatting for non-table content
+- Handle nested structures by flattening

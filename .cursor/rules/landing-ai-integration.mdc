@@ -1,0 +1,45 @@
+---
+description: Guidelines for Landing.ai SDK integration and document processing
+---
+# Landing.ai Integration Rules
+
+## SDK Usage
+- Import: `from agentic_doc.parse import parse`
+- Two-step process:
+  1. Parse for markdown/fields: `parse(documents=[file_path])`
+  2. Extract with schema: `parse(documents=[file_path], extraction_model=DynamicModel)`
+
+## Dynamic Schema Creation
+- Build Pydantic models dynamically using `create_model()`
+- All fields should be type `Optional[str]` for compatibility
+- Field names must be snake_case (normalize from display names)
+
+## Extraction Flow
+1. Parse document to get available fields
+2. User selects fields via UI
+3. Create dynamic Pydantic model from selections
+4. Run extraction with model
+5. Fallback to GPT-5 if Landing.ai fails
+
+## Key Patterns
+```python
+# Dynamic model creation
+field_definitions = {
+    field.name: (Optional[str], Field(None, description=field.description))
+    for field in selected_fields
+}
+DynamicExtractionModel = create_model(
+    'DynamicExtractionModel',
+    **field_definitions
+)
+```
+
+## Error Handling
+- Catch SDK exceptions and fallback to GPT-5
+- Always populate requested fields (even if null)
+- Use regex extraction from markdown as last resort
+- Track extraction method in metadata
+
+## Important Fields
+- APEX ID: Usually format "25USOA..." found in bottom right
+- Always normalize extracted keys to match selected field names

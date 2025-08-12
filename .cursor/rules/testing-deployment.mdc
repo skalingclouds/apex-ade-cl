@@ -1,0 +1,51 @@
+---
+description: Testing and deployment guidelines for Apex ADE
+---
+# Testing & Deployment Guidelines
+
+## Local Development
+```bash
+# Backend
+cd backend
+source venv/bin/activate
+export VISION_AGENT_API_KEY=your_key
+export OPENAI_API_KEY=your_key
+uvicorn app.main:app --reload --port 8000
+
+# Frontend
+cd frontend
+npm install
+npm run dev  # Runs on port 3000
+```
+
+## Environment Variables
+Required in `.env`:
+- `VISION_AGENT_API_KEY`: Landing.ai API key
+- `OPENAI_API_KEY`: For GPT-5 access
+- `OPENAI_MODEL=gpt-5`: Model specification
+- `DATABASE_URL`: SQLite connection string
+
+## Testing Workflow
+1. Upload test PDF (check APEX ID extraction)
+2. Parse document (verify field detection)
+3. Select multiple fields for extraction
+4. Verify table formatting in results
+5. Test chat functionality
+6. Export to CSV/Markdown
+
+## Common Issues
+- Port conflicts: Kill existing processes
+- Schema validation: Restart backend after changes
+- Markdown parsing: Check for HTML artifacts
+- Multi-field extraction: Verify key normalization
+
+## Database Management
+- Run migrations: `alembic upgrade head`
+- Create migration: `alembic revision -m "description"`
+- Check schema: `sqlite3 apex_ade.db .schema`
+
+## Performance
+- Large files: Use chunking for >50MB PDFs
+- Batch processing: Implement queue system
+- Chat responses: Cache frequent queries
+- UI: Virtual scrolling for long lists
