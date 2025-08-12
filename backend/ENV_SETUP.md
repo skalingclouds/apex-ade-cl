@@ -15,7 +15,7 @@ VISION_AGENT_API_KEY=your_landing_ai_api_key_here
 OPENAI_API_KEY=your_openai_api_key_here
 
 # Optional: Override OpenAI model
-OPENAI_MODEL=gpt-4-turbo-preview
+OPENAI_MODEL=gpt-5-2025-08-07
 
 # Database (default is fine)
 DATABASE_URL=sqlite:///./apex_ade.db
