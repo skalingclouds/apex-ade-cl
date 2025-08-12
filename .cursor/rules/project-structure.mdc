@@ -1,0 +1,30 @@
+---
+alwaysApply: true
+---
+# Apex ADE Project Structure Guide
+
+## Overview
+Apex ADE is a document extraction tool using Landing.ai SDK and GPT-5 for PDF processing with human-in-the-loop review.
+
+## Backend Structure (FastAPI)
+- Entry point: [backend/app/main.py](mdc:backend/app/main.py)
+- API routes: [backend/app/api/api.py](mdc:backend/app/api/api.py)
+- Config: [backend/app/core/config.py](mdc:backend/app/core/config.py)
+- Database: SQLite with SQLAlchemy ORM at `backend/apex_ade.db`
+
+## Frontend Structure (React/Vite)
+- Entry: [frontend/src/main.tsx](mdc:frontend/src/main.tsx)
+- Main app: [frontend/src/App.tsx](mdc:frontend/src/App.tsx)
+- API client: [frontend/src/services/api.ts](mdc:frontend/src/services/api.ts)
+- Build config: [frontend/vite.config.ts](mdc:frontend/vite.config.ts)
+
+## Key Services
+- Landing.ai integration: [backend/app/services/simple_landing_ai_service.py](mdc:backend/app/services/simple_landing_ai_service.py)
+- OpenAI chat: [backend/app/services/openai_service.py](mdc:backend/app/services/openai_service.py)
+- Markdown processing: [frontend/src/utils/enhancedMarkdownUtils.ts](mdc:frontend/src/utils/enhancedMarkdownUtils.ts)
+
+## Important Notes
+- Uses GPT-5 exclusively (no other OpenAI models)
+- Maximum file size: 1GB
+- Port 8000 (backend), Port 3000 (frontend)
+- Environment variables required: VISION_AGENT_API_KEY, OPENAI_API_KEY

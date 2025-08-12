@@ -1,0 +1,41 @@
+---
+globs: backend/**/*.py
+---
+# Backend Development Patterns
+
+## API Endpoints
+- Use FastAPI with async/await
+- All endpoints under `/api/v1/` prefix
+- Return Pydantic models, not raw dicts
+- Handle errors with proper HTTP status codes
+
+## Database Models
+- All models inherit from `Base` (SQLAlchemy declarative base)
+- Use snake_case for column names
+- Include timestamps: `created_at`, `updated_at`
+- Example pattern:
+```python
+from app.core.database import Base
+from sqlalchemy import Column, Integer, String, DateTime, func
+
+class ModelName(Base):
+    __tablename__ = "model_names"
+    id = Column(Integer, primary_key=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+```
+
+## Service Layer
+- Services handle business logic
+- Return domain objects, not SQLAlchemy models
+- Use dependency injection for database sessions
+- Always use `settings.OPENAI_MODEL` (currently "gpt-5")
+
+## Error Handling
+- Use custom error classes in [backend/app/core/error_handlers.py](mdc:backend/app/core/error_handlers.py)
+- Include retry_allowed and escalation_available flags
+- Log errors with proper context
+
+## Migrations
+- Use Alembic for all schema changes
+- Never modify database directly in production
+- Migration files in `backend/alembic/versions/`
