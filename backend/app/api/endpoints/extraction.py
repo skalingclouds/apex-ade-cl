@@ -57,12 +57,21 @@ async def parse_document(
         service = SimpleLandingAIService()
         parse_result = await service.parse_document(document.filepath)
         
-        # Update status and save markdown if available
         old_status = document.status
         document.status = DocumentStatus.PARSED
-        # Save markdown from parse result
         if parse_result.markdown:
             document.extracted_md = parse_result.markdown
+        try:
+            fields_payload = [f.model_dump() for f in (parse_result.fields or [])]
+        except Exception:
+            fields_payload = []
+            for f in (parse_result.fields or []):
+                try:
+                    fields_payload.append(f.dict())
+                except Exception:
+                    pass
+        import json as _json
+        document.parsed_fields = _json.dumps(fields_payload)
         db.commit()
         
         # Analytics event logging
