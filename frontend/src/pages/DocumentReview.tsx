@@ -64,6 +64,7 @@ export default function DocumentReview() {
   const [exportingMarkdown, setExportingMarkdown] = useState(false)
   const [exportingText, setExportingText] = useState(false)
   const [parsedFields, setParsedFields] = useState<FieldInfo[] | null>(null)
+  const [currentPage, setCurrentPage] = useState<number>(1)
   
   const documentId = parseInt(id!)
 
@@ -458,6 +459,7 @@ export default function DocumentReview() {
             url={getDocumentPdf(documentId)}
             highlightAreas={highlightAreas}
             onHighlightsClear={() => setHighlightAreas([])}
+            onPageChange={(p) => setCurrentPage(p)}
           />
         </div>
 
@@ -498,26 +500,41 @@ export default function DocumentReview() {
                       <tbody>
                         {Object.entries(safeParseExtractedData(document.extracted_data))
                           .filter(([key]) => key !== 'chunks' && key !== 'full_content')
-                          .map(([key, value]) => (
-                            <tr key={key} className="border-b border-gray-600">
-                              <td className="border border-gray-600 p-2 align-top min-w-[160px]">{key.replace(/_/g, ' ')}</td>
-                              <td className="border border-gray-600 p-2">
-                                {Array.isArray(value) ? (
-                                  value.length > 0 ? (
-                                    <div className="space-y-1">
-                                      {value.map((item, index) => (
-                                        <div key={index}>{String(item)}</div>
-                                      ))}
-                                    </div>
+                          .map(([key, value]) => {
+                            const label = key.replace(/_/g, ' ')
+                            // Show per-page value for apex_id when array
+                            if (key === 'apex_id' && Array.isArray(value)) {
+                              const v = value[currentPage - 1]
+                              return (
+                                <tr key={key} className="border-b border-gray-600">
+                                  <td className="border border-gray-600 p-2 align-top min-w-[160px]">{label}</td>
+                                  <td className="border border-gray-600 p-2">
+                                    <span>{String(v ?? '(empty)')}</span>
+                                  </td>
+                                </tr>
+                              )
+                            }
+                            return (
+                              <tr key={key} className="border-b border-gray-600">
+                                <td className="border border-gray-600 p-2 align-top min-w-[160px]">{label}</td>
+                                <td className="border border-gray-600 p-2">
+                                  {Array.isArray(value) ? (
+                                    value.length > 0 ? (
+                                      <div className="space-y-1">
+                                        {value.map((item, index) => (
+                                          <div key={index}>{String(item)}</div>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <span className="text-gray-400">(empty)</span>
+                                    )
                                   ) : (
-                                    <span className="text-gray-400">(empty)</span>
-                                  )
-                                ) : (
-                                  <span>{String(value ?? '(empty)')}</span>
-                                )}
-                              </td>
-                            </tr>
-                          ))}
+                                    <span>{String(value ?? '(empty)')}</span>
+                                  )}
+                                </td>
+                              </tr>
+                            )
+                          })}
                       </tbody>
                     </table>
                   </div>

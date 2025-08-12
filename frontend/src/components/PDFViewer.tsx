@@ -20,6 +20,7 @@ interface PDFViewerProps {
   url: string
   highlightAreas?: Array<{ page: number; bbox: number[] }>
   onHighlightsClear?: () => void
+  onPageChange?: (page: number) => void
 }
 
 export default function PDFViewer({ url, highlightAreas = [], onHighlightsClear }: PDFViewerProps) {
@@ -78,7 +79,11 @@ export default function PDFViewer({ url, highlightAreas = [], onHighlightsClear 
         {/* Page Navigation */}
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setPageNumber(Math.max(1, pageNumber - 1))}
+            onClick={() => {
+              const p = Math.max(1, pageNumber - 1)
+              setPageNumber(p)
+              onPageChange?.(p)
+            }}
             disabled={pageNumber <= 1}
             className="p-2 hover:bg-dark-600 rounded disabled:opacity-50 transition-colors"
             title="Previous Page"
@@ -89,7 +94,11 @@ export default function PDFViewer({ url, highlightAreas = [], onHighlightsClear 
             Page {pageNumber} of {numPages}
           </span>
           <button
-            onClick={() => setPageNumber(Math.min(numPages, pageNumber + 1))}
+            onClick={() => {
+              const p = Math.min(numPages, pageNumber + 1)
+              setPageNumber(p)
+              onPageChange?.(p)
+            }}
             disabled={pageNumber >= numPages}
             className="p-2 hover:bg-dark-600 rounded disabled:opacity-50 transition-colors"
             title="Next Page"
@@ -172,7 +181,7 @@ export default function PDFViewer({ url, highlightAreas = [], onHighlightsClear 
         <div className="flex justify-center">
           <Document
             file={url}
-            onLoadSuccess={({ numPages }) => setNumPages(numPages)}
+            onLoadSuccess={({ numPages }) => { setNumPages(numPages); onPageChange?.(1) }}
             className="pdf-document"
             loading={
               <div className="flex items-center justify-center h-full">

@@ -175,60 +175,75 @@ class LandingAIMarkdownProcessor:
         """
         Extract clean CSV data from markdown and/or extracted data.
         Returns a properly formatted CSV string ready for export.
+        Rules:
+        - Prefer structured data when present; fall back to markdown tables
+        - When any field is an array, emit one row per index with aligned columns
+        - Exclude auxiliary keys like 'chunks' and 'full_content'
+        - Include a 'page' column when possible (from chunks or inferred index)
         """
-        csv_rows = []
+        csv_rows: List[List[str]] = []
         
-        # First try to extract from markdown tables
-        if markdown:
+        # Try structured data first for reliability
+        data_obj: Optional[Dict[str, Any]] = None
+        if extracted_data:
+            try:
+                data_obj = json.loads(extracted_data) if isinstance(extracted_data, str) else extracted_data
+            except (json.JSONDecodeError, TypeError):
+                data_obj = None
+        
+        if isinstance(data_obj, dict):
+            data = dict(data_obj)
+            chunks = data.get('chunks') if isinstance(data.get('chunks'), list) else None
+            # Select keys to export
+            keys = [k for k in data.keys() if k not in ('chunks', 'full_content')]
+            if keys:
+                # Detect multi-row
+                list_lengths = [len(v) for v in (data[k] for k in keys) if isinstance(v, list)]
+                is_multi = len(list_lengths) > 0
+                if is_multi:
+                    max_len = max(list_lengths) if list_lengths else 1
+                    header: List[str] = []
+                    use_page = bool(chunks)
+                    if use_page:
+                        header.append('page')
+                    header.extend(keys)
+                    csv_rows.append(header)
+                    for i in range(max_len):
+                        row: List[str] = []
+                        if use_page:
+                            if i < len(chunks) and isinstance(chunks[i], dict) and 'page' in chunks[i]:
+                                row.append(str(chunks[i].get('page')))
+                            else:
+                                row.append(str(i + 1))
+                        for k in keys:
+                            v = data.get(k)
+                            if isinstance(v, list):
+                                row.append('' if i >= len(v) or v[i] is None else str(v[i]))
+                            else:
+                                # repeat scalar on first row only
+                                row.append('' if i > 0 or v is None else str(v))
+                        csv_rows.append(row)
+                else:
+                    # Single row
+                    header = keys
+                    values: List[str] = []
+                    for k in keys:
+                        v = data.get(k)
+                        values.append('' if v is None else str(v))
+                    csv_rows = [header, values]
+        
+        # If no structured rows, try markdown tables
+        if not csv_rows and markdown:
             cleaned_md = LandingAIMarkdownProcessor.clean_markdown_for_display(markdown)
             tables = LandingAIMarkdownProcessor._extract_markdown_tables(cleaned_md)
-            
             for table in tables:
                 csv_rows.extend(table)
         
-        # If we have extracted_data, try to use it as well
-        if extracted_data and not csv_rows:
-            try:
-                data = json.loads(extracted_data) if isinstance(extracted_data, str) else extracted_data
-                
-                if isinstance(data, dict):
-                    # Convert dict to CSV rows
-                    headers = list(data.keys())
-                    values = []
-                    for v in data.values():
-                        if v is None:
-                            values.append('')
-                        elif isinstance(v, list):
-                            # Join list values with semicolon for CSV compatibility
-                            values.append('; '.join(str(item) for item in v))
-                        else:
-                            values.append(str(v))
-                    csv_rows = [headers, values]
-                elif isinstance(data, list) and data:
-                    if isinstance(data[0], dict):
-                        # List of dicts
-                        headers = list(data[0].keys())
-                        csv_rows.append(headers)
-                        for item in data:
-                            row = []
-                            for h in headers:
-                                value = item.get(h, '')
-                                if isinstance(value, list):
-                                    # Join list values with semicolon for CSV compatibility
-                                    row.append('; '.join(str(v) for v in value))
-                                else:
-                                    row.append(str(value) if value is not None else '')
-                            csv_rows.append(row)
-            except (json.JSONDecodeError, TypeError):
-                pass
-        
-        # Convert to CSV string
         if csv_rows:
             output = StringIO()
             writer = csv.writer(output)
             writer.writerows(csv_rows)
             return output.getvalue()
-        
         return ''
     
     @staticmethod
