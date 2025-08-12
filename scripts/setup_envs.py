@@ -217,7 +217,7 @@ def setup_backend_env():
         'STORAGE_MODE': storage_mode,
         'VISION_AGENT_API_KEY': vision_api_key,
         'OPENAI_API_KEY': openai_api_key,
-        'OPENAI_MODEL': existing_vars.get('OPENAI_MODEL', 'gpt-4-turbo-preview'),
+        'OPENAI_MODEL': existing_vars.get('OPENAI_MODEL'),
         'OPENAI_MAX_TOKENS': existing_vars.get('OPENAI_MAX_TOKENS', '4096'),
         'OPENAI_TEMPERATURE': existing_vars.get('OPENAI_TEMPERATURE', '0.7')
     }
