@@ -1,4 +1,4 @@
-#!/Users/chris/ai/naitiveade/.conductor/valletta/apex-ade-cl/backend/venv/bin/python3
+#!/Users/chris/conductor/apex-ade-cl/.conductor/tirana/backend/venv/bin/python3.13
 import sys
 from distro.distro import main
 if __name__ == '__main__':

@@ -588,6 +588,16 @@ class SimpleLandingAIService:
             # Add custom fields
             if custom_fields:
                 for field in custom_fields:
+                    # accept dict or Pydantic-like object
+                    if not isinstance(field, dict):
+                        try:
+                            field = field.dict()
+                        except Exception:
+                            field = {
+                                'name': getattr(field, 'name', None),
+                                'type': getattr(field, 'type', 'str'),
+                                'description': getattr(field, 'description', None),
+                            }
                     field_name = field.get('name')
                     field_type = field.get('type', 'str')
                     
