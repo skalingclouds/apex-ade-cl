@@ -286,3 +286,31 @@ cython_debug/
 .DS_Store
 /scripts/venv
 /scripts/venv
+
+# ----- Python virtual environments and caches (added by Agent Mode) -----
+# Common virtual environment directories
+venv/
+.venv/
+env/
+.env/
+*_env/
+virtualenv/
+
+# Python caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment indicator files
+pyvenv.cfg
+pip-selfcheck.json
+
+# IDE-specific virtual environment folders
+# PyCharm/IntelliJ may place virtualenvs under .idea
+.idea/**/virtualenvs/
+.idea/**/venv/
+.idea/**/.venv/
+# VS Code workspace settings (already ignored by .vscode/), keep explicit in case of nested venvs
+.vscode/**/venv/
+.vscode/**/.venv/
