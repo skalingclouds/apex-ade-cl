@@ -314,3 +314,6 @@ pip-selfcheck.json
 # VS Code workspace settings (already ignored by .vscode/), keep explicit in case of nested venvs
 .vscode/**/venv/
 .vscode/**/.venv/
+
+# Exclude accidental Git backup directory
+.git.backup/
