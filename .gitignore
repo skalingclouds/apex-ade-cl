@@ -317,3 +317,6 @@ pip-selfcheck.json
 
 # Exclude accidental Git backup directory
 .git.backup/
+scripts/venv/
+backend/uploads/
+backend/*.db
