@@ -171,6 +171,81 @@ class LandingAIMarkdownProcessor:
         return '\n'.join(normalized_lines)
     
     @staticmethod
+    def _parse_structured_data(extracted_data: Optional[str]) -> Optional[Dict[str, Any]]:
+        """Parse extracted data from string or object format."""
+        if not extracted_data:
+            return None
+        
+        try:
+            return json.loads(extracted_data) if isinstance(extracted_data, str) else extracted_data
+        except (json.JSONDecodeError, TypeError):
+            return None
+    
+    @staticmethod
+    def _filter_exportable_keys(data: Dict[str, Any]) -> List[str]:
+        """Filter keys to include only exportable fields, excluding auxiliary data."""
+        return [k for k in data.keys() if k not in ('chunks', 'full_content')]
+    
+    @staticmethod
+    def _build_multi_row_csv(data: Dict[str, Any], keys: List[str]) -> List[List[str]]:
+        """Build CSV rows for data with array fields (multi-row format)."""
+        csv_rows: List[List[str]] = []
+        chunks = data.get('chunks') if isinstance(data.get('chunks'), list) else None
+        
+        # Determine maximum row count from array fields
+        list_lengths = [len(v) for v in (data[k] for k in keys) if isinstance(v, list)]
+        max_len = max(list_lengths) if list_lengths else 1
+        
+        # Build header
+        header: List[str] = []
+        use_page = bool(chunks)
+        if use_page:
+            header.append('page')
+        header.extend(keys)
+        csv_rows.append(header)
+        
+        # Build data rows
+        for i in range(max_len):
+            row: List[str] = []
+            
+            # Add page number if chunks available
+            if use_page:
+                if i < len(chunks) and isinstance(chunks[i], dict) and 'page' in chunks[i]:
+                    row.append(str(chunks[i].get('page')))
+                else:
+                    row.append(str(i + 1))
+            
+            # Add field values
+            for k in keys:
+                v = data.get(k)
+                if isinstance(v, list):
+                    row.append('' if i >= len(v) or v[i] is None else str(v[i]))
+                else:
+                    # Scalar values only appear in first row
+                    row.append('' if i > 0 or v is None else str(v))
+            
+            csv_rows.append(row)
+        
+        return csv_rows
+    
+    @staticmethod
+    def _build_single_row_csv(data: Dict[str, Any], keys: List[str]) -> List[List[str]]:
+        """Build CSV rows for data without array fields (single-row format)."""
+        header = keys
+        values = ['' if data.get(k) is None else str(data.get(k)) for k in keys]
+        return [header, values]
+    
+    @staticmethod
+    def _parse_markdown_tables(markdown: str) -> List[List[str]]:
+        """Extract CSV rows from markdown tables."""
+        csv_rows: List[List[str]] = []
+        cleaned_md = LandingAIMarkdownProcessor.clean_markdown_for_display(markdown)
+        tables = LandingAIMarkdownProcessor._extract_markdown_tables(cleaned_md)
+        for table in tables:
+            csv_rows.extend(table)
+        return csv_rows
+    
+    @staticmethod
     def extract_clean_csv_data(markdown: str, extracted_data: Optional[str] = None) -> str:
         """
         Extract clean CSV data from markdown and/or extracted data.
@@ -183,67 +258,32 @@ class LandingAIMarkdownProcessor:
         """
         csv_rows: List[List[str]] = []
         
-        # Try structured data first for reliability
-        data_obj: Optional[Dict[str, Any]] = None
-        if extracted_data:
-            try:
-                data_obj = json.loads(extracted_data) if isinstance(extracted_data, str) else extracted_data
-            except (json.JSONDecodeError, TypeError):
-                data_obj = None
+        # Try structured data first
+        data_obj = LandingAIMarkdownProcessor._parse_structured_data(extracted_data)
         
         if isinstance(data_obj, dict):
-            data = dict(data_obj)
-            chunks = data.get('chunks') if isinstance(data.get('chunks'), list) else None
-            # Select keys to export
-            keys = [k for k in data.keys() if k not in ('chunks', 'full_content')]
+            keys = LandingAIMarkdownProcessor._filter_exportable_keys(data_obj)
+            
             if keys:
-                # Detect multi-row
-                list_lengths = [len(v) for v in (data[k] for k in keys) if isinstance(v, list)]
-                is_multi = len(list_lengths) > 0
-                if is_multi:
-                    max_len = max(list_lengths) if list_lengths else 1
-                    header: List[str] = []
-                    use_page = bool(chunks)
-                    if use_page:
-                        header.append('page')
-                    header.extend(keys)
-                    csv_rows.append(header)
-                    for i in range(max_len):
-                        row: List[str] = []
-                        if use_page:
-                            if i < len(chunks) and isinstance(chunks[i], dict) and 'page' in chunks[i]:
-                                row.append(str(chunks[i].get('page')))
-                            else:
-                                row.append(str(i + 1))
-                        for k in keys:
-                            v = data.get(k)
-                            if isinstance(v, list):
-                                row.append('' if i >= len(v) or v[i] is None else str(v[i]))
-                            else:
-                                # repeat scalar on first row only
-                                row.append('' if i > 0 or v is None else str(v))
-                        csv_rows.append(row)
+                # Check if any fields are arrays (multi-row format needed)
+                has_arrays = any(isinstance(data_obj.get(k), list) for k in keys)
+                
+                if has_arrays:
+                    csv_rows = LandingAIMarkdownProcessor._build_multi_row_csv(data_obj, keys)
                 else:
-                    # Single row
-                    header = keys
-                    values: List[str] = []
-                    for k in keys:
-                        v = data.get(k)
-                        values.append('' if v is None else str(v))
-                    csv_rows = [header, values]
+                    csv_rows = LandingAIMarkdownProcessor._build_single_row_csv(data_obj, keys)
         
-        # If no structured rows, try markdown tables
+        # Fallback to markdown tables if no structured data
         if not csv_rows and markdown:
-            cleaned_md = LandingAIMarkdownProcessor.clean_markdown_for_display(markdown)
-            tables = LandingAIMarkdownProcessor._extract_markdown_tables(cleaned_md)
-            for table in tables:
-                csv_rows.extend(table)
+            csv_rows = LandingAIMarkdownProcessor._parse_markdown_tables(markdown)
         
+        # Convert to CSV string
         if csv_rows:
             output = StringIO()
             writer = csv.writer(output)
             writer.writerows(csv_rows)
             return output.getvalue()
+        
         return ''
     
     @staticmethod

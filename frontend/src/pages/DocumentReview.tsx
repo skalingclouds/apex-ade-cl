@@ -51,6 +51,54 @@ function safeParseExtractedData(data: any): any {
   return {}
 }
 
+// FieldRow component to handle individual field rendering
+interface FieldRowProps {
+  fieldKey: string
+  value: any
+  currentPage: number
+}
+
+function FieldRow({ fieldKey, value, currentPage }: FieldRowProps) {
+  const label = fieldKey.replace(/_/g, ' ')
+  
+  // Special handling for apex_id to show per-page values
+  if (fieldKey === 'apex_id' && Array.isArray(value)) {
+    const pageIndex = currentPage - 1
+    const pageValue = pageIndex >= 0 && pageIndex < value.length ? value[pageIndex] : null
+    
+    return (
+      <tr className="border-b border-gray-600">
+        <td className="border border-gray-600 p-2 align-top min-w-[160px]">{label}</td>
+        <td className="border border-gray-600 p-2">
+          <span>{pageValue !== null ? String(pageValue) : '(not available for this page)'}</span>
+        </td>
+      </tr>
+    )
+  }
+  
+  // Standard field rendering
+  return (
+    <tr className="border-b border-gray-600">
+      <td className="border border-gray-600 p-2 align-top min-w-[160px]">{label}</td>
+      <td className="border border-gray-600 p-2">
+        {Array.isArray(value) ? (
+          value.length > 0 ? (
+            <div className="space-y-1">
+              {value.map((item, index) => (
+                <div key={index}>{String(item)}</div>
+              ))}
+            </div>
+          ) : (
+            <span className="text-gray-400">(empty)</span>
+          )
+        ) : (
+          <span>{String(value ?? '(empty)')}</span>
+        )}
+      </td>
+    </tr>
+  )
+}
+
 export default function DocumentReview() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -500,41 +548,14 @@ export default function DocumentReview() {
                       <tbody>
                         {Object.entries(safeParseExtractedData(document.extracted_data))
                           .filter(([key]) => key !== 'chunks' && key !== 'full_content')
-                          .map(([key, value]) => {
-                            const label = key.replace(/_/g, ' ')
-                            // Show per-page value for apex_id when array
-                            if (key === 'apex_id' && Array.isArray(value)) {
-                              const v = value[currentPage - 1]
-                              return (
-                                <tr key={key} className="border-b border-gray-600">
-                                  <td className="border border-gray-600 p-2 align-top min-w-[160px]">{label}</td>
-                                  <td className="border border-gray-600 p-2">
-                                    <span>{String(v ?? '(empty)')}</span>
-                                  </td>
-                                </tr>
-                              )
-                            }
-                            return (
-                              <tr key={key} className="border-b border-gray-600">
-                                <td className="border border-gray-600 p-2 align-top min-w-[160px]">{label}</td>
-                                <td className="border border-gray-600 p-2">
-                                  {Array.isArray(value) ? (
-                                    value.length > 0 ? (
-                                      <div className="space-y-1">
-                                        {value.map((item, index) => (
-                                          <div key={index}>{String(item)}</div>
-                                        ))}
-                                      </div>
-                                    ) : (
-                                      <span className="text-gray-400">(empty)</span>
-                                    )
-                                  ) : (
-                                    <span>{String(value ?? '(empty)')}</span>
-                                  )}
-                                </td>
-                              </tr>
-                            )
-                          })}
+                          .map(([key, value]) => (
+                            <FieldRow 
+                              key={key} 
+                              fieldKey={key} 
+                              value={value} 
+                              currentPage={currentPage} 
+                            />
+                          ))}
                       </tbody>
                     </table>
                   </div>

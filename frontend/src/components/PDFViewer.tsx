@@ -23,12 +23,18 @@ interface PDFViewerProps {
   onPageChange?: (page: number) => void
 }
 
-export default function PDFViewer({ url, highlightAreas = [], onHighlightsClear }: PDFViewerProps) {
+export default function PDFViewer({ url, highlightAreas = [], onHighlightsClear, onPageChange }: PDFViewerProps) {
   const [numPages, setNumPages] = useState<number>(0)
   const [pageNumber, setPageNumber] = useState<number>(1)
   const [scale, setScale] = useState<number>(1.0)
   const [rotation, setRotation] = useState<number>(0)
   const [pageWidth, setPageWidth] = useState<number>(500)
+  
+  // Centralized page change handler
+  const handlePageChange = (newPage: number) => {
+    setPageNumber(newPage)
+    onPageChange?.(newPage)
+  }
   
   // Zoom presets
   const zoomLevels = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0]
@@ -79,11 +85,7 @@ export default function PDFViewer({ url, highlightAreas = [], onHighlightsClear 
         {/* Page Navigation */}
         <div className="flex items-center gap-2">
           <button
-            onClick={() => {
-              const p = Math.max(1, pageNumber - 1)
-              setPageNumber(p)
-              onPageChange?.(p)
-            }}
+            onClick={() => handlePageChange(Math.max(1, pageNumber - 1))}
             disabled={pageNumber <= 1}
             className="p-2 hover:bg-dark-600 rounded disabled:opacity-50 transition-colors"
             title="Previous Page"
@@ -94,11 +96,7 @@ export default function PDFViewer({ url, highlightAreas = [], onHighlightsClear 
             Page {pageNumber} of {numPages}
           </span>
           <button
-            onClick={() => {
-              const p = Math.min(numPages, pageNumber + 1)
-              setPageNumber(p)
-              onPageChange?.(p)
-            }}
+            onClick={() => handlePageChange(Math.min(numPages, pageNumber + 1))}
             disabled={pageNumber >= numPages}
             className="p-2 hover:bg-dark-600 rounded disabled:opacity-50 transition-colors"
             title="Next Page"
@@ -181,7 +179,10 @@ export default function PDFViewer({ url, highlightAreas = [], onHighlightsClear 
         <div className="flex justify-center">
           <Document
             file={url}
-            onLoadSuccess={({ numPages }) => { setNumPages(numPages); onPageChange?.(1) }}
+            onLoadSuccess={({ numPages }) => { 
+              setNumPages(numPages)
+              handlePageChange(1)
+            }}
             className="pdf-document"
             loading={
               <div className="flex items-center justify-center h-full">
