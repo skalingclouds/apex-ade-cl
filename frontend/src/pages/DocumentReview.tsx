@@ -51,6 +51,54 @@ function safeParseExtractedData(data: any): any {
   return {}
 }
 
+// FieldRow component to handle individual field rendering
+interface FieldRowProps {
+  fieldKey: string
+  value: any
+  currentPage: number
+}
+
+function FieldRow({ fieldKey, value, currentPage }: FieldRowProps) {
+  const label = fieldKey.replace(/_/g, ' ')
+  
+  // Special handling for apex_id to show per-page values
+  if (fieldKey === 'apex_id' && Array.isArray(value)) {
+    const pageIndex = currentPage - 1
+    const pageValue = pageIndex >= 0 && pageIndex < value.length ? value[pageIndex] : null
+    
+    return (
+      <tr className="border-b border-gray-600">
+        <td className="border border-gray-600 p-2 align-top min-w-[160px]">{label}</td>
+        <td className="border border-gray-600 p-2">
+          <span>{pageValue !== null ? String(pageValue) : '(not available for this page)'}</span>
+        </td>
+      </tr>
+    )
+  }
+  
+  // Standard field rendering
+  return (
+    <tr className="border-b border-gray-600">
+      <td className="border border-gray-600 p-2 align-top min-w-[160px]">{label}</td>
+      <td className="border border-gray-600 p-2">
+        {Array.isArray(value) ? (
+          value.length > 0 ? (
+            <div className="space-y-1">
+              {value.map((item, index) => (
+                <div key={index}>{String(item)}</div>
+              ))}
+            </div>
+          ) : (
+            <span className="text-gray-400">(empty)</span>
+          )
+        ) : (
+          <span>{String(value ?? '(empty)')}</span>
+        )}
+      </td>
+    </tr>
+  )
+}
+
 export default function DocumentReview() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -64,6 +112,7 @@ export default function DocumentReview() {
   const [exportingMarkdown, setExportingMarkdown] = useState(false)
   const [exportingText, setExportingText] = useState(false)
   const [parsedFields, setParsedFields] = useState<FieldInfo[] | null>(null)
+  const [currentPage, setCurrentPage] = useState<number>(1)
   
   const documentId = parseInt(id!)
 
@@ -458,6 +507,7 @@ export default function DocumentReview() {
             url={getDocumentPdf(documentId)}
             highlightAreas={highlightAreas}
             onHighlightsClear={() => setHighlightAreas([])}
+            onPageChange={(p) => setCurrentPage(p)}
           />
         </div>
 
@@ -499,24 +549,12 @@ export default function DocumentReview() {
                         {Object.entries(safeParseExtractedData(document.extracted_data))
                           .filter(([key]) => key !== 'chunks' && key !== 'full_content')
                           .map(([key, value]) => (
-                            <tr key={key} className="border-b border-gray-600">
-                              <td className="border border-gray-600 p-2 align-top min-w-[160px]">{key.replace(/_/g, ' ')}</td>
-                              <td className="border border-gray-600 p-2">
-                                {Array.isArray(value) ? (
-                                  value.length > 0 ? (
-                                    <div className="space-y-1">
-                                      {value.map((item, index) => (
-                                        <div key={index}>{String(item)}</div>
-                                      ))}
-                                    </div>
-                                  ) : (
-                                    <span className="text-gray-400">(empty)</span>
-                                  )
-                                ) : (
-                                  <span>{String(value ?? '(empty)')}</span>
-                                )}
-                              </td>
-                            </tr>
+                            <FieldRow 
+                              key={key} 
+                              fieldKey={key} 
+                              value={value} 
+                              currentPage={currentPage} 
+                            />
                           ))}
                       </tbody>
                     </table>
