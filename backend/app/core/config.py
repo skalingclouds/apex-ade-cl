@@ -3,6 +3,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import AnyHttpUrl, field_validator
 import os
 from pathlib import Path
+import warnings
 
 class Settings(BaseSettings):
     # Pydantic v2 settings configuration
@@ -72,13 +73,38 @@ class Settings(BaseSettings):
     OPENAI_TEMPERATURE: float = 0.1  # Lower temperature for more accurate document analysis
 
     # Backwards-compatibility: accept deprecated OPENAI_MAX_TOKENS env var
+    # NOTE: OPENAI_MAX_TOKENS is deprecated in favor of OPENAI_MAX_COMPLETION_TOKENS
+    # Precedence: OPENAI_MAX_COMPLETION_TOKENS > OPENAI_MAX_TOKENS (if both are set)
     OPENAI_MAX_TOKENS: Optional[int] = None
 
     def __init__(self, **values):
         super().__init__(**values)
-        # Map deprecated OPENAI_MAX_TOKENS -> OPENAI_MAX_COMPLETION_TOKENS if provided
+        
+        # Handle deprecated OPENAI_MAX_TOKENS with clear precedence rules
         if self.OPENAI_MAX_TOKENS is not None:
-            self.OPENAI_MAX_COMPLETION_TOKENS = int(self.OPENAI_MAX_TOKENS)
+            # Get the original value of OPENAI_MAX_COMPLETION_TOKENS before any modifications
+            original_max_completion = values.get('OPENAI_MAX_COMPLETION_TOKENS', 8192)
+            
+            # Check if OPENAI_MAX_COMPLETION_TOKENS was explicitly set (not just default)
+            if 'OPENAI_MAX_COMPLETION_TOKENS' in os.environ:
+                # OPENAI_MAX_COMPLETION_TOKENS takes precedence when both are set
+                warnings.warn(
+                    f"Both OPENAI_MAX_TOKENS and OPENAI_MAX_COMPLETION_TOKENS are set in environment. "
+                    f"Using OPENAI_MAX_COMPLETION_TOKENS={self.OPENAI_MAX_COMPLETION_TOKENS}. "
+                    f"Please remove the deprecated OPENAI_MAX_TOKENS from your configuration.",
+                    DeprecationWarning,
+                    stacklevel=2
+                )
+            else:
+                # Only OPENAI_MAX_TOKENS is set, use it for backwards compatibility
+                self.OPENAI_MAX_COMPLETION_TOKENS = int(self.OPENAI_MAX_TOKENS)
+                warnings.warn(
+                    f"OPENAI_MAX_TOKENS is deprecated and will be removed in a future version. "
+                    f"Please use OPENAI_MAX_COMPLETION_TOKENS={self.OPENAI_MAX_COMPLETION_TOKENS} instead.",
+                    DeprecationWarning,
+                    stacklevel=2
+                )
+        
         # Create upload directory if it doesn't exist
         upload_path = Path(self.UPLOAD_DIRECTORY)
         upload_path.mkdir(parents=True, exist_ok=True)
