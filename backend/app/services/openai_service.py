@@ -1,5 +1,5 @@
 """
-OpenAI GPT-5 Chat Service for document-based Q&A with contextual highlighting
+OpenAI GPT-5 Service for document-based Q&A with contextual highlighting using the new Responses API
 """
 import json
 import logging
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 class OpenAIService:
     """
-    Service for handling OpenAI GPT-5 chat interactions with document context.
+    Service for handling OpenAI GPT-5 interactions with document context using the new Responses API.
     Integrates with Landing.AI chunk telemetry for precise PDF highlighting.
     """
     
@@ -41,7 +41,7 @@ class OpenAIService:
         include_history: bool = True
     ) -> Dict[str, Any]:
         """
-         Chat with a document using GPT-5 and return response with highlight mappings.
+        Chat with a document using GPT-5 and return response with highlight mappings.
         
         Args:
             db: Database session
@@ -73,24 +73,27 @@ class OpenAIService:
                 history_context = self._get_chat_history(db, document.id, limit=5)
             
             # Build the prompt for GPT-5
-            # Using instruction-following structure
+            # Using the new Responses API structure for document analysis
             system_prompt = self._build_system_prompt()
             user_prompt = self._build_user_prompt(query, context, history_context)
             
-            # Call OpenAI API
-            response = self.client.chat.completions.create(
+            # Call OpenAI GPT-5 API using the new Responses API
+            response = self.client.responses.create(
                 model=settings.OPENAI_MODEL,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                max_tokens=settings.OPENAI_MAX_TOKENS,
+                input=f"{system_prompt}\n\n{user_prompt}",
+                text={
+                    "verbosity": "normal",
+                    "max_completion_tokens": settings.OPENAI_MAX_COMPLETION_TOKENS
+                },
+                reasoning={
+                    "effort": "medium"
+                },
                 temperature=settings.OPENAI_TEMPERATURE,
                 response_format={"type": "json_object"}  # Ensure JSON response
             )
             
-            # Parse the response
-            result = self._parse_gpt_response(response.choices[0].message.content)
+            # Parse the response from GPT-5 Responses API
+            result = self._parse_gpt_response(response.text)
             
             # Map chunk references to PDF bounding boxes
             highlight_areas = self._map_chunks_to_pdf_areas(
@@ -218,39 +221,92 @@ CRITICAL INSTRUCTIONS (Follow these literally):
         Parse GPT-5 response and extract structured data.
         """
         try:
+            # Clean up the content first - sometimes GPT adds extra text
+            content = content.strip()
+            
+            # Look for JSON content between code blocks if present
+            if '```json' in content:
+                json_start = content.find('```json') + 7
+                json_end = content.find('```', json_start)
+                if json_end != -1:
+                    content = content[json_start:json_end].strip()
+            elif '```' in content and '{' in content:
+                # Try to extract JSON from generic code blocks
+                start_brace = content.find('{')
+                end_brace = content.rfind('}')
+                if start_brace != -1 and end_brace != -1 and end_brace > start_brace:
+                    content = content[start_brace:end_brace + 1]
+            
             # Try to parse as JSON
             result = json.loads(content)
             
-            # Validate required fields
-            if 'answer' not in result:
-                result['answer'] = content  # Fallback to raw content
+            # Validate and clean the response
+            if not isinstance(result, dict):
+                raise json.JSONDecodeError("Response is not a JSON object", content, 0)
             
-            # Extract chunk IDs from the response if not properly formatted
+            # Ensure required fields exist and are valid
+            if 'answer' not in result or not result['answer']:
+                result['answer'] = "I couldn't find specific information about that in the document."
+            
+            # Clean up the answer text
+            answer = str(result['answer']).strip()
+            if not answer:
+                answer = "I couldn't find specific information about that in the document."
+            result['answer'] = answer
+            
+            # Extract and validate chunk references
             if 'referenced_chunks' not in result:
-                # Try to extract chunk references from the text
+                # Try to extract chunk references from the answer text
                 chunk_pattern = r'CHUNK_([A-Za-z0-9]+)_PAGE_\d+'
-                chunks = re.findall(chunk_pattern, content)
+                chunks = re.findall(chunk_pattern, answer)
                 result['referenced_chunks'] = list(set(chunks))
             
-            # Set default confidence if not provided
-            if 'confidence' not in result:
-                result['confidence'] = 0.8
+            # Ensure referenced_chunks is a list
+            if not isinstance(result.get('referenced_chunks'), list):
+                result['referenced_chunks'] = []
+            
+            # Set and validate confidence score
+            confidence = result.get('confidence', 0.8)
+            try:
+                confidence = float(confidence)
+                if confidence < 0.0 or confidence > 1.0:
+                    confidence = 0.8
+            except (ValueError, TypeError):
+                confidence = 0.8
+            result['confidence'] = confidence
+            
+            # Add reasoning if not present
+            if 'reasoning' not in result:
+                result['reasoning'] = 'Answer based on document analysis'
             
             return result
             
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
             # Fallback for non-JSON response
-            logger.warning("GPT response was not valid JSON, using fallback parsing")
+            logger.warning(f"GPT response was not valid JSON: {str(e)}. Using fallback parsing.")
             
             # Extract chunk references from plain text
             chunk_pattern = r'CHUNK_([A-Za-z0-9]+)_PAGE_\d+'
             chunks = re.findall(chunk_pattern, content)
             
+            # Clean up the content for better readability
+            cleaned_content = content.replace('```json', '').replace('```', '').strip()
+            if not cleaned_content:
+                cleaned_content = "I couldn't process the document properly. Please try asking your question in a different way."
+            
             return {
-                'answer': content,
+                'answer': cleaned_content,
                 'referenced_chunks': list(set(chunks)),
                 'confidence': 0.5,
-                'reasoning': 'Response parsed from plain text'
+                'reasoning': 'Response parsed from plain text due to JSON parsing error'
+            }
+        except Exception as e:
+            logger.error(f"Unexpected error parsing GPT response: {str(e)}")
+            return {
+                'answer': "I encountered an error while processing your question. Please try again.",
+                'referenced_chunks': [],
+                'confidence': 0.0,
+                'reasoning': f'Error during response parsing: {str(e)}'
             }
     
     def _map_chunks_to_pdf_areas(

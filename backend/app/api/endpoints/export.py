@@ -80,11 +80,15 @@ def export_as_csv(
     except Exception as e:
         logger.warning(f"Failed to log export analytics: {str(e)}")
     
+    # Add UTF-8 BOM for Excel compatibility
+    csv_bytes = output.getvalue().encode('utf-8-sig')
+    
     return StreamingResponse(
-        io.BytesIO(output.getvalue().encode()),
-        media_type="text/csv",
+        io.BytesIO(csv_bytes),
+        media_type="text/csv; charset=utf-8",
         headers={
-            "Content-Disposition": f"attachment; filename={document.filename.replace('.pdf', '')}_export.csv"
+            "Content-Disposition": f"attachment; filename={document.filename.replace('.pdf', '')}_export.csv",
+            "Content-Type": "text/csv; charset=utf-8"
         }
     )
 
@@ -286,11 +290,25 @@ def get_extracted_markdown(
             detail="Document not found"
         )
     
+    # Handle case where document has extracted data but no markdown
     if not document.extracted_md:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No extracted markdown available"
-        )
+        # Check if we have extracted_data instead
+        if document.extracted_data and document.status in [DocumentStatus.EXTRACTED, DocumentStatus.APPROVED]:
+            # Document was extracted successfully but markdown wasn't stored
+            # Return a placeholder response indicating this
+            return {
+                "markdown": "# Document Extracted Successfully\n\nThis document has been processed and structured data has been extracted, but the original markdown content is not available for display.\n\nYou can view the extracted fields in the sidebar.",
+                "processed_at": document.processed_at,
+                "status": document.status,
+                "has_structured_data": True,
+                "has_markdown": False
+            }
+        else:
+            # No extracted content at all
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No extracted content available. Document may not have been processed yet."
+            )
     
     # Log the access
     try:
@@ -308,5 +326,7 @@ def get_extracted_markdown(
     return {
         "markdown": cleaned_markdown,
         "processed_at": document.processed_at,
-        "status": document.status
+        "status": document.status,
+        "has_structured_data": bool(document.extracted_data),
+        "has_markdown": True
     }

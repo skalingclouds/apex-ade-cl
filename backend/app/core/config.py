@@ -1,10 +1,17 @@
-from typing import List, Union
-from pydantic_settings import BaseSettings
+from typing import List, Union, Optional
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import AnyHttpUrl, field_validator
 import os
 from pathlib import Path
 
 class Settings(BaseSettings):
+    # Pydantic v2 settings configuration
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=True,
+        extra='ignore',  # ignore unknown env vars to avoid crashing on extras
+    )
+
     APP_NAME: str = "ApexADE"
     APP_VERSION: str = "0.1.0"
     API_V1_STR: str = "/api/v1"
@@ -56,18 +63,22 @@ class Settings(BaseSettings):
     # Landing.ai SDK
     VISION_AGENT_API_KEY: str = ""
     
-    # OpenAI settings for GPT-5
+    # OpenAI GPT-5 settings (latest model as of August 2025)
     OPENAI_API_KEY: str = ""
-    OPENAI_MODEL: str = "gpt-5"  # Default to current GPT-5 model identifier
-    OPENAI_MAX_TOKENS: int = 4096
-    OPENAI_TEMPERATURE: float = 0.7
-    
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    OPENAI_MODEL: str = "gpt-5"  # GPT-5 is the latest model (released August 2025)
+    OPENAI_MAX_COMPLETION_TOKENS: int = 8192  # Max tokens for GPT-5 responses
+    OPENAI_VERBOSITY: str = "medium"  # low, medium, or high - controls response length
+    OPENAI_REASONING_EFFORT: str = "medium"  # minimal, low, medium, or high
+    OPENAI_TEMPERATURE: float = 0.1  # Lower temperature for more accurate document analysis
+
+    # Backwards-compatibility: accept deprecated OPENAI_MAX_TOKENS env var
+    OPENAI_MAX_TOKENS: Optional[int] = None
 
     def __init__(self, **values):
         super().__init__(**values)
+        # Map deprecated OPENAI_MAX_TOKENS -> OPENAI_MAX_COMPLETION_TOKENS if provided
+        if self.OPENAI_MAX_TOKENS is not None:
+            self.OPENAI_MAX_COMPLETION_TOKENS = int(self.OPENAI_MAX_TOKENS)
         # Create upload directory if it doesn't exist
         upload_path = Path(self.UPLOAD_DIRECTORY)
         upload_path.mkdir(parents=True, exist_ok=True)
