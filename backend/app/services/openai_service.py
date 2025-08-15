@@ -290,9 +290,8 @@ CRITICAL INSTRUCTIONS (Follow these literally):
             chunks = re.findall(chunk_pattern, content)
             
             # Clean up the content for better readability
-            cleaned_content = content.replace('```json', '').replace('```', '').strip()
-            if not cleaned_content:
-                cleaned_content = "I couldn't process the document properly. Please try asking your question in a different way."
+            cleaned_content = content.replace('```json', '').replace('```', '').strip() or "I couldn't process the document properly. Please try asking your question in a different way."
+
             
             return {
                 'answer': cleaned_content,
