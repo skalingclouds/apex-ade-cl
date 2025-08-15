@@ -49,7 +49,7 @@ async def chat_with_document(
         try:
             openai_service = OpenAIService()
             if openai_service.client:
-                # Use OpenAI GPT-4.1 for chat
+                # Use OpenAI GPT-5 for chat
                 logger.info(f"Using OpenAI GPT-5 for document {document_id} chat")
                 response_data = openai_service.chat_with_document(
                     db=db,

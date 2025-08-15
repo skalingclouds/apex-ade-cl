@@ -47,7 +47,7 @@ When you upload a large PDF (like your 900MB/3270-page document):
 3. Each chunk is processed using the three-tier extraction strategy:
    - Landing.AI API (primary)
    - Landing.AI SDK (fallback)
-   - OpenAI GPT-4 (last resort)
+   - OpenAI GPT-5 (last resort)
 4. Results are aggregated and displayed
 
 ## Troubleshooting

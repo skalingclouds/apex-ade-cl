@@ -184,7 +184,14 @@ class LandingAIMarkdownProcessor:
     @staticmethod
     def _filter_exportable_keys(data: Dict[str, Any]) -> List[str]:
         """Filter keys to include only exportable fields, excluding auxiliary data."""
-        return [k for k in data.keys() if k not in ('chunks', 'full_content')]
+        # Extended list of fields to exclude from export
+        excluded_fields = {
+            'chunks', 'full_content', 'markdown', 'grounding', 
+            'metadata', 'extraction_metadata', 'result_path',
+            'errors', 'extraction_error', 'doc_type', 'start_page_idx', 
+            'end_page_idx', 'total_forms', 'forms'
+        }
+        return [k for k in data.keys() if k not in excluded_fields]
     
     @staticmethod
     def _build_multi_row_csv(data: Dict[str, Any], keys: List[str]) -> List[List[str]]:
@@ -196,12 +203,17 @@ class LandingAIMarkdownProcessor:
         list_lengths = [len(v) for v in (data[k] for k in keys) if isinstance(v, list)]
         max_len = max(list_lengths) if list_lengths else 1
         
-        # Build header
+        # Build header - prioritize apex_id if present
         header: List[str] = []
+        sorted_keys = sorted(keys)
+        if 'apex_id' in sorted_keys:
+            sorted_keys.remove('apex_id')
+            sorted_keys.insert(0, 'apex_id')
+        
         use_page = bool(chunks)
         if use_page:
             header.append('page')
-        header.extend(keys)
+        header.extend(sorted_keys)
         csv_rows.append(header)
         
         # Build data rows
@@ -216,13 +228,22 @@ class LandingAIMarkdownProcessor:
                     row.append(str(i + 1))
             
             # Add field values
-            for k in keys:
+            for k in sorted_keys:
                 v = data.get(k)
                 if isinstance(v, list):
-                    row.append('' if i >= len(v) or v[i] is None else str(v[i]))
+                    if i < len(v) and v[i] is not None:
+                        # Clean value for Excel
+                        cell_value = str(v[i]).replace('\n', ' ').replace('\r', ' ')
+                        row.append(cell_value)
+                    else:
+                        row.append('')
                 else:
                     # Scalar values only appear in first row
-                    row.append('' if i > 0 or v is None else str(v))
+                    if i == 0 and v is not None:
+                        cell_value = str(v).replace('\n', ' ').replace('\r', ' ')
+                        row.append(cell_value)
+                    else:
+                        row.append('')
             
             csv_rows.append(row)
         
@@ -231,8 +252,24 @@ class LandingAIMarkdownProcessor:
     @staticmethod
     def _build_single_row_csv(data: Dict[str, Any], keys: List[str]) -> List[List[str]]:
         """Build CSV rows for data without array fields (single-row format)."""
-        header = keys
-        values = ['' if data.get(k) is None else str(data.get(k)) for k in keys]
+        # Sort headers but prioritize apex_id
+        sorted_keys = sorted(keys)
+        if 'apex_id' in sorted_keys:
+            sorted_keys.remove('apex_id')
+            sorted_keys.insert(0, 'apex_id')
+        
+        header = sorted_keys
+        values = []
+        for k in sorted_keys:
+            v = data.get(k)
+            if v is None:
+                values.append('')
+            elif isinstance(v, list):
+                # Join list values with semicolon for Excel compatibility
+                values.append('; '.join(str(item) for item in v if item))
+            else:
+                values.append(str(v).replace('\n', ' ').replace('\r', ' '))
+        
         return [header, values]
     
     @staticmethod
@@ -250,11 +287,15 @@ class LandingAIMarkdownProcessor:
         """
         Extract clean CSV data from markdown and/or extracted data.
         Returns a properly formatted CSV string ready for export.
+        Filters out chunks, metadata, and internal fields to provide clean export data.
+        Always produces Excel-compatible CSV output.
+        
         Rules:
         - Prefer structured data when present; fall back to markdown tables
         - When any field is an array, emit one row per index with aligned columns
-        - Exclude auxiliary keys like 'chunks' and 'full_content'
+        - Exclude auxiliary keys like 'chunks', 'full_content', and metadata
         - Include a 'page' column when possible (from chunks or inferred index)
+        - Prioritize apex_id field in column ordering
         """
         csv_rows: List[List[str]] = []
         
@@ -262,27 +303,96 @@ class LandingAIMarkdownProcessor:
         data_obj = LandingAIMarkdownProcessor._parse_structured_data(extracted_data)
         
         if isinstance(data_obj, dict):
-            keys = LandingAIMarkdownProcessor._filter_exportable_keys(data_obj)
-            
-            if keys:
-                # Check if any fields are arrays (multi-row format needed)
-                has_arrays = any(isinstance(data_obj.get(k), list) for k in keys)
+            # Handle special case of 'forms' array
+            if 'forms' in data_obj and isinstance(data_obj['forms'], list):
+                # Multiple forms - each form is a row
+                all_keys = set()
+                for form in data_obj['forms']:
+                    if isinstance(form, dict):
+                        all_keys.update(form.keys())
                 
-                if has_arrays:
-                    csv_rows = LandingAIMarkdownProcessor._build_multi_row_csv(data_obj, keys)
-                else:
-                    csv_rows = LandingAIMarkdownProcessor._build_single_row_csv(data_obj, keys)
+                headers = sorted(list(all_keys))
+                # Prioritize apex_id if present
+                if 'apex_id' in headers:
+                    headers.remove('apex_id')
+                    headers.insert(0, 'apex_id')
+                
+                csv_rows = [headers]
+                
+                for form in data_obj['forms']:
+                    if isinstance(form, dict):
+                        row = []
+                        for header in headers:
+                            value = form.get(header, '')
+                            if isinstance(value, list):
+                                # Join array values with semicolon
+                                row.append('; '.join(str(item) for item in value if item))
+                            else:
+                                row.append(str(value) if value is not None else '')
+                        csv_rows.append(row)
+            else:
+                # Regular extraction
+                keys = LandingAIMarkdownProcessor._filter_exportable_keys(data_obj)
+                
+                if keys:
+                    # Check if any fields are arrays (multi-row format needed)
+                    has_arrays = any(isinstance(data_obj.get(k), list) and len(data_obj.get(k, [])) > 1 for k in keys)
+                    
+                    if has_arrays:
+                        csv_rows = LandingAIMarkdownProcessor._build_multi_row_csv(data_obj, keys)
+                    else:
+                        csv_rows = LandingAIMarkdownProcessor._build_single_row_csv(data_obj, keys)
+        
+        elif isinstance(data_obj, list) and data_obj:
+            # Handle list of extractions
+            if isinstance(data_obj[0], dict):
+                # List of dicts - each dict is a row
+                all_keys = set()
+                for item in data_obj:
+                    if isinstance(item, dict):
+                        all_keys.update(item.keys())
+                
+                # Filter out excluded fields
+                excluded_fields = {
+                    'chunks', 'full_content', 'markdown', 'grounding', 
+                    'metadata', 'extraction_metadata', 'result_path',
+                    'errors', 'extraction_error', 'doc_type'
+                }
+                headers = sorted([k for k in all_keys if k not in excluded_fields])
+                
+                # Prioritize apex_id if present
+                if 'apex_id' in headers:
+                    headers.remove('apex_id')
+                    headers.insert(0, 'apex_id')
+                
+                if headers:
+                    csv_rows.append(headers)
+                    for item in data_obj:
+                        row = []
+                        for h in headers:
+                            value = item.get(h, '')
+                            if isinstance(value, list):
+                                # Join list values with semicolon for CSV compatibility
+                                row.append('; '.join(str(v) for v in value if v))
+                            else:
+                                row.append(str(value) if value is not None else '')
+                        csv_rows.append(row)
         
         # Fallback to markdown tables if no structured data
         if not csv_rows and markdown:
             csv_rows = LandingAIMarkdownProcessor._parse_markdown_tables(markdown)
         
-        # Convert to CSV string
+        # Convert to CSV string with proper Excel-compatible formatting
         if csv_rows:
             output = StringIO()
-            writer = csv.writer(output)
+            # Use Excel-compatible dialect with proper quoting
+            writer = csv.writer(output, dialect='excel', quoting=csv.QUOTE_MINIMAL)
             writer.writerows(csv_rows)
-            return output.getvalue()
+            csv_content = output.getvalue()
+            # Ensure Windows-style line endings for Excel compatibility
+            if not csv_content.endswith('\n'):
+                csv_content += '\n'
+            return csv_content
         
         return ''
     

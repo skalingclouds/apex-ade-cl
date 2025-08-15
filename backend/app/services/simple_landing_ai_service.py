@@ -26,15 +26,18 @@ except ImportError:
     ParseConfig = None
     viz_parsed_document = None
 
+logger = logging.getLogger(__name__)
+
 # Import OpenAI for dynamic field generation
 try:
     import openai
     from openai import OpenAI
-except ImportError:
+    logger.info("OpenAI package imported successfully for dynamic field generation")
+except ImportError as e:
     openai = None
     OpenAI = None
-
-logger = logging.getLogger(__name__)
+    logger.error(f"Failed to import OpenAI package: {str(e)}. Dynamic field generation will be disabled.")
+    logger.error("To enable AI-powered field generation, install openai package: pip install openai")
 
 class ExtractionResult(BaseModel):
     data: Dict[str, Any]
@@ -60,15 +63,27 @@ class SimpleLandingAIService:
         Use AI to analyze the document content and suggest relevant extraction fields.
         This provides truly dynamic field generation based on actual document content.
         """
-        # Try AI-based field generation first
-        if OpenAI and settings.OPENAI_API_KEY:
-            try:
-                return self._extract_fields_using_ai(markdown)
-            except Exception as e:
-                logger.warning(f"AI field generation failed, using fallback: {str(e)}")
+        # Check for AI prerequisites
+        if not OpenAI:
+            logger.warning("OpenAI not available (not installed). Using fallback pattern-based field generation.")
+            logger.warning("To enable AI-powered dynamic field generation, install: pip install openai")
+            return self._extract_fields_fallback(markdown)
         
-        # Fallback to pattern-based field generation
-        return self._extract_fields_fallback(markdown)
+        if not settings.OPENAI_API_KEY:
+            logger.warning("OPENAI_API_KEY not configured. Using fallback pattern-based field generation.")
+            logger.warning("Set OPENAI_API_KEY in environment variables to enable AI-powered field generation.")
+            return self._extract_fields_fallback(markdown)
+        
+        # Try AI-based field generation
+        try:
+            logger.info("Using AI-powered dynamic field generation...")
+            fields = self._extract_fields_using_ai(markdown)
+            logger.info(f"Successfully generated {len(fields)} dynamic fields using AI")
+            return fields
+        except Exception as e:
+            logger.error(f"AI field generation failed: {str(e)}")
+            logger.warning("Falling back to pattern-based field generation")
+            return self._extract_fields_fallback(markdown)
     
     def _extract_fields_using_ai(self, markdown: str) -> List[FieldInfo]:
         """
@@ -79,53 +94,95 @@ class SimpleLandingAIService:
         # Truncate markdown if too long (keep first 3000 chars for analysis)
         markdown_sample = markdown[:3000] if len(markdown) > 3000 else markdown
         
-        prompt = f"""Analyze this document content and suggest relevant fields to extract. 
-        Return a JSON array of field suggestions. Each field should have:
-        - name: snake_case field name (e.g., 'invoice_number', 'total_amount')
-        - type: always 'string' for compatibility
-        - description: brief description of what this field contains
+        prompt = f"""You are a document analysis expert. Analyze this document content and suggest relevant fields for data extraction.
+
+        INSTRUCTIONS:
+        1. Examine the document content carefully to identify what data is actually present
+        2. Suggest fields that would be useful to extract from this specific document type
+        3. Focus on identifiable data like names, dates, addresses, IDs, signatures, amounts, etc.
+        4. For legal documents: focus on names, addresses, case numbers, IDs, dates, signatures
+        5. For forms: focus on input fields, checkboxes, personal information, signatures
+        6. For invoices: focus on amounts, dates, vendor info, line items
+        7. For contracts: focus on parties, dates, terms, amounts, signatures
+        
+        Return a JSON array with 8-15 field suggestions. Each field must have:
+        - name: snake_case field name (e.g., 'claimant_name', 'apex_id', 'signature_date')
+        - type: always 'string' 
+        - description: clear description of what this field contains
         - required: always false
         
-        Analyze the actual content and structure to suggest fields that are actually present in the document.
-        Limit to 12-15 most relevant fields. Focus on extractable data like names, dates, amounts, IDs, addresses, etc.
+        IMPORTANT: Base suggestions on what you actually see in this document content, not generic templates.
         
         Document content:
         {markdown_sample}
         
-        Return ONLY a JSON array, no other text. Example format:
-        [
-            {{"name": "invoice_number", "type": "string", "description": "Invoice or reference number", "required": false}},
-            {{"name": "date", "type": "string", "description": "Document date", "required": false}}
-        ]
-        """
+        Return ONLY a valid JSON array with no extra text or formatting:"""
         
-        response = client.chat.completions.create(
+        response = client.responses.create(
             model=settings.OPENAI_MODEL,
-            messages=[
-                {"role": "system", "content": "You are a document analysis expert. Analyze documents and suggest relevant fields to extract based on the actual content present."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.3,  # Lower temperature for more consistent field suggestions
-            max_tokens=1000
+            input=f"You are a document analysis expert. Analyze documents and suggest relevant fields to extract based on the actual content present.\n\n{prompt}",
+            text={
+                "verbosity": "normal",
+                "max_completion_tokens": 1000
+            },
+            reasoning={
+                "effort": "medium"
+            },
+            temperature=0.3  # Lower temperature for more consistent field suggestions
         )
         
-        # Parse the response
-        fields_json = response.choices[0].message.content.strip()
-        # Clean up the response if it has markdown code blocks
+        # Parse the response from GPT-5 Responses API
+        fields_json = response.text.strip()
+        logger.debug(f"Raw AI response: {fields_json}")
+        
+        # Clean up the response if it has markdown code blocks or extra text
         if "```json" in fields_json:
             fields_json = fields_json.split("```json")[1].split("```")[0].strip()
         elif "```" in fields_json:
             fields_json = fields_json.split("```")[1].split("```")[0].strip()
         
-        fields_data = json.loads(fields_json)
+        # Try to extract JSON if there's extra text
+        if not fields_json.startswith('['):
+            # Look for JSON array in the response
+            import re
+            json_match = re.search(r'\[.*\]', fields_json, re.DOTALL)
+            if json_match:
+                fields_json = json_match.group(0)
+            else:
+                raise ValueError("No valid JSON array found in AI response")
         
-        # Convert to FieldInfo objects
+        try:
+            fields_data = json.loads(fields_json)
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse AI response as JSON: {str(e)}")
+            logger.error(f"Problematic JSON: {fields_json}")
+            raise ValueError(f"AI returned invalid JSON: {str(e)}")
+        
+        # Validate response structure
+        if not isinstance(fields_data, list):
+            raise ValueError("AI response must be a JSON array")
+        
+        # Convert to FieldInfo objects with validation
         fields = []
-        for field_dict in fields_data:
+        for i, field_dict in enumerate(fields_data):
+            if not isinstance(field_dict, dict):
+                logger.warning(f"Skipping invalid field at index {i}: not a dictionary")
+                continue
+            
+            # Validate required fields
+            name = field_dict.get("name", "").strip()
+            if not name:
+                logger.warning(f"Skipping field at index {i}: missing name")
+                continue
+            
+            # Sanitize field name to snake_case
+            name = re.sub(r'[^\w\s]', '', name)  # Remove special chars
+            name = re.sub(r'\s+', '_', name.lower())  # Convert spaces to underscores
+            
             fields.append(FieldInfo(
-                name=field_dict.get("name", "field"),
+                name=name,
                 type=field_dict.get("type", "string"),
-                description=field_dict.get("description", ""),
+                description=field_dict.get("description", name.replace('_', ' ').title()),
                 required=field_dict.get("required", False)
             ))
         
@@ -232,7 +289,7 @@ class SimpleLandingAIService:
                 
                 # Special handling for apex_id
                 if field == 'apex_id':
-                    fields_desc.append(f"- apex_id: Extract the Apex ID which appears as 'Apex ID: ' followed by an alphanumeric code like '25USOA26564'. Look for text that says 'Apex ID:', 'APEX ID:', or similar variations. Return ALL apex IDs found as an array.")
+                    fields_desc.append(f"- apex_id: Extract ALL Apex IDs from the document. Each page may have its own Apex ID (e.g., if each page is a separate opt-in form). Look for text that says 'Apex ID:', 'APEX ID:', or similar variations followed by an alphanumeric code like '25USOA26564'. Return ALL unique Apex IDs found as an array, preserving the order they appear in the document. If the document has 5 pages with 5 different opt-in forms, extract all 5 Apex IDs.")
                 elif is_multi:
                     fields_desc.append(f"- {field}: Extract ALL {field.replace('_', ' ')} values as an array. If multiple occurrences exist across pages, include all of them")
                 else:
@@ -259,18 +316,21 @@ class SimpleLandingAIService:
             }}
             """
             
-            response = client.chat.completions.create(
+            response = client.responses.create(
                 model=settings.OPENAI_MODEL,
-                messages=[
-                    {"role": "system", "content": "You are a data extraction expert. Extract specific fields from documents and return them as JSON. When a field appears multiple times in the document, return ALL occurrences as an array. Pay special attention to identifiers like 'Apex ID:' which may appear with various formats and capitalizations."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.1,  # Low temperature for accurate extraction
-                max_tokens=6000  # Increased for larger arrays
+                input=f"You are a data extraction expert. Extract specific fields from documents and return them as JSON. When a field appears multiple times in the document, return ALL occurrences as an array. Pay special attention to identifiers like 'Apex ID:' which may appear with various formats and capitalizations.\n\n{prompt}",
+                text={
+                    "verbosity": "normal",
+                    "max_completion_tokens": 6000  # Increased for larger arrays
+                },
+                reasoning={
+                    "effort": "high"  # High effort for accurate extraction
+                },
+                temperature=0.1  # Low temperature for accurate extraction
             )
             
-            # Parse the response
-            extracted_json = response.choices[0].message.content.strip()
+            # Parse the response from GPT-5 Responses API
+            extracted_json = response.text.strip()
             # Clean up the response if it has markdown code blocks
             if "```json" in extracted_json:
                 extracted_json = extracted_json.split("```json")[1].split("```")[0].strip()
@@ -369,8 +429,16 @@ class SimpleLandingAIService:
             logger.info(f"Processing {file_path} with structured extraction model")
             logger.info(f"Max pages per batch: {max_pages}")
             
-            # Parse with the configured settings
-            result = parse(file_path, config=config)
+            # Parse with the configured settings and enable grounding data capture
+            # Create a temporary directory for grounding data
+            import tempfile
+            grounding_dir = tempfile.mkdtemp(prefix="grounding_")
+            
+            result = parse(
+                file_path, 
+                config=config,
+                grounding_save_dir=grounding_dir
+            )
             
             if result:
                 # Extract the structured data
@@ -473,12 +541,17 @@ class SimpleLandingAIService:
         try:
             # Run parse
             loop = asyncio.get_event_loop()
+            # Create temporary directory for grounding data
+            import tempfile
+            grounding_dir = tempfile.mkdtemp(prefix="grounding_parse_")
+            
             result = await loop.run_in_executor(
                 None,
                 lambda: parse(
                     documents=[file_path],
                     include_marginalia=True,
-                    include_metadata_in_markdown=True
+                    include_metadata_in_markdown=True,
+                    grounding_save_dir=grounding_dir
                 )
             )
             
@@ -603,7 +676,10 @@ class SimpleLandingAIService:
                     
                     # Create specific descriptions for known fields to improve extraction accuracy
                     if field_name == 'apex_id':
-                        field_desc = "The Apex ID identifier found in the document, typically appearing as 'Apex ID: ' followed by an alphanumeric code starting with '25USOA' and followed by numbers (e.g., 'Apex ID: 25USOA26564'). Look for text that explicitly says 'Apex ID:' or 'APEX ID:' in the document header or body."
+                        field_desc = "ALL Apex ID identifiers found in the document. Each page/form may have its own Apex ID. Typically appears as 'Apex ID: ' followed by an alphanumeric code starting with '25USOA' and followed by numbers (e.g., 'Apex ID: 25USOA26564'). Extract ALL unique Apex IDs from all pages/forms in the document."
+                        # Force apex_id to be an array type for multiple values
+                        from typing import List as _List
+                        python_type = _List[str]
                     elif field_name == 'case_number':
                         field_desc = "The case number or filing number, typically a numeric or alphanumeric identifier used to reference the case in legal or administrative proceedings."
                     elif field_name == 'filing_date':
@@ -644,24 +720,31 @@ class SimpleLandingAIService:
             # First try using Landing.AI SDK/Library
             logger.info("Attempting extraction with Landing.AI SDK/Library (preferred for paid plan)")
             
+            # Create temporary directory for grounding data
+            import tempfile
+            grounding_dir = tempfile.mkdtemp(prefix="grounding_extract_")
+            
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(
                 None,
                 lambda: parse(
                     documents=[file_path],
-                    extraction_model=DynamicExtractionModel
+                    extraction_model=DynamicExtractionModel,
+                    grounding_save_dir=grounding_dir
                 )
             )
             
             if not result or len(result) == 0:
                 # If extraction with schema fails, try to get markdown without schema
                 logger.info("Extraction with schema failed, trying to get markdown only")
+                # Use the same grounding directory for fallback
                 result = await loop.run_in_executor(
                     None,
                     lambda: parse(
                         documents=[file_path],
                         include_marginalia=True,
-                        include_metadata_in_markdown=True
+                        include_metadata_in_markdown=True,
+                        grounding_save_dir=grounding_dir
                     )
                 )
                 
@@ -740,15 +823,19 @@ class SimpleLandingAIService:
             all_requested_fields = list({*selected_fields, *([f['name'] for f in custom_fields] if custom_fields else [])})
             filtered_data = {field: normalized_extracted.get(field, None) for field in all_requested_fields}
 
-            # Heuristic: if apex_id is still empty but markdown contains a likely Apex ID pattern, extract it
-            if 'apex_id' in filtered_data and (filtered_data['apex_id'] is None or str(filtered_data['apex_id']).strip() == ''):
-                extracted_apex = self._extract_apex_id_from_markdown(markdown_content)
-                if extracted_apex:
-                    filtered_data['apex_id'] = extracted_apex
+            # Heuristic: if apex_id is still empty but markdown contains a likely Apex ID pattern, extract ALL of them
+            if 'apex_id' in filtered_data and (filtered_data['apex_id'] is None or str(filtered_data['apex_id']).strip() == '' or filtered_data['apex_id'] == []):
+                extracted_apex_ids = self._extract_apex_id_from_markdown(markdown_content)
+                if extracted_apex_ids:
+                    # Store as array to handle multiple IDs (one per page/form)
+                    filtered_data['apex_id'] = extracted_apex_ids
+                    logger.info(f"Extracted {len(extracted_apex_ids)} Apex IDs via regex fallback: {extracted_apex_ids}")
             
             # Extract chunk telemetry with bounding boxes if available
             chunks_with_telemetry = []
             if hasattr(parsed_doc, 'chunks'):
+                logger.info(f"Processing {len(parsed_doc.chunks)} chunks for grounding data")
+                
                 for idx, chunk in enumerate(parsed_doc.chunks):
                     chunk_data = {
                         'id': str(idx),
@@ -756,21 +843,61 @@ class SimpleLandingAIService:
                         'page': getattr(chunk, 'page', 1)
                     }
                     
-                    # Try to get bounding box information
-                    if hasattr(chunk, 'bbox'):
-                        chunk_data['bbox'] = chunk.bbox
-                    elif hasattr(chunk, 'bounding_box'):
-                        chunk_data['bbox'] = chunk.bounding_box
-                    elif hasattr(chunk, 'coordinates'):
-                        # Convert coordinates to bbox format [x1, y1, x2, y2]
-                        coords = chunk.coordinates
-                        if isinstance(coords, dict):
-                            chunk_data['bbox'] = [
-                                coords.get('x', 0),
-                                coords.get('y', 0),
-                                coords.get('x', 0) + coords.get('width', 100),
-                                coords.get('y', 0) + coords.get('height', 100)
-                            ]
+                    # Try to get grounding information from Landing.AI
+                    grounding_found = False
+                    
+                    # Check for Landing.AI grounding data (correct structure)
+                    if hasattr(chunk, 'grounding') and chunk.grounding:
+                        grounding_list = chunk.grounding
+                        if isinstance(grounding_list, list) and len(grounding_list) > 0:
+                            # Use first grounding entry (chunks can have multiple groundings)
+                            first_grounding = grounding_list[0]
+                            
+                            # Extract page number (Landing.AI uses 0-indexed pages)
+                            if hasattr(first_grounding, 'page') and first_grounding.page is not None:
+                                chunk_data['page'] = first_grounding.page + 1  # Convert to 1-indexed for frontend
+                            
+                            # Extract bounding box coordinates from grounding.box
+                            if hasattr(first_grounding, 'box') and first_grounding.box:
+                                box = first_grounding.box
+                                # Landing.AI uses relative coordinates (0-1) with l,t,r,b format
+                                if (hasattr(box, 'l') and hasattr(box, 't') and 
+                                    hasattr(box, 'r') and hasattr(box, 'b')):
+                                    # Convert to [x1, y1, x2, y2] format with scaled coordinates for PDFViewer
+                                    # PDFViewer expects coordinates scaled to 1000 for proper display
+                                    chunk_data['bbox'] = [
+                                        int(box.l * 1000),  # left -> x1
+                                        int(box.t * 1000),  # top -> y1  
+                                        int(box.r * 1000),  # right -> x2
+                                        int(box.b * 1000)   # bottom -> y2
+                                    ]
+                                    grounding_found = True
+                                    logger.debug(f"✓ Extracted Landing.AI grounding for chunk {idx}: page={chunk_data.get('page')}, bbox={chunk_data['bbox']}")
+                    
+                    # Fallback: Try direct bbox attributes
+                    if not grounding_found:
+                        if hasattr(chunk, 'bbox') and chunk.bbox:
+                            chunk_data['bbox'] = chunk.bbox
+                            grounding_found = True
+                        elif hasattr(chunk, 'bounding_box') and chunk.bounding_box:
+                            chunk_data['bbox'] = chunk.bounding_box
+                            grounding_found = True
+                        elif hasattr(chunk, 'coordinates') and chunk.coordinates:
+                            # Convert coordinates to bbox format [x1, y1, x2, y2]
+                            coords = chunk.coordinates
+                            if isinstance(coords, dict):
+                                chunk_data['bbox'] = [
+                                    coords.get('x', 0),
+                                    coords.get('y', 0),
+                                    coords.get('x', 0) + coords.get('width', 100),
+                                    coords.get('y', 0) + coords.get('height', 100)
+                                ]
+                                grounding_found = True
+                    
+                    if grounding_found:
+                        logger.debug(f"Chunk {idx} has bounding box: {chunk_data.get('bbox')}")
+                    else:
+                        logger.debug(f"No bounding box found for chunk {idx}")
                     
                     chunks_with_telemetry.append(chunk_data)
             
@@ -795,13 +922,18 @@ class SimpleLandingAIService:
             
             # Try to at least get markdown
             try:
+                # Create temporary directory for grounding data
+                import tempfile
+                grounding_dir = tempfile.mkdtemp(prefix="grounding_final_")
+                
                 loop = asyncio.get_event_loop()
                 result = await loop.run_in_executor(
                     None,
                     lambda: parse(
                         documents=[file_path],
                         include_marginalia=True,
-                        include_metadata_in_markdown=True
+                        include_metadata_in_markdown=True,
+                        grounding_save_dir=grounding_dir
                     )
                 )
                 
@@ -838,19 +970,37 @@ class SimpleLandingAIService:
             return s.lower()
         return {to_snake(k): v for k, v in data.items()}
 
-    def _extract_apex_id_from_markdown(self, markdown: str) -> Optional[str]:
-        """Extract Apex ID from markdown using robust patterns.
+    def _extract_apex_id_from_markdown(self, markdown: str) -> Optional[List[str]]:
+        """Extract ALL Apex IDs from markdown using robust patterns.
+        Returns list of all found IDs. Each page may have its own Apex ID.
         Prioritize IDs beginning with 25USOA..., fallback to generic alphanum.
         """
         if not markdown:
             return None
         import re
-        # Specific pattern mentioned by stakeholders
-        m = re.search(r"\b(?:apex\s*id[:#\s]*)?(25USOA[0-9A-Z-]+)\b", markdown, re.IGNORECASE)
-        if m:
-            return m.group(1)
-        # Generic fallback near 'Apex ID' label
-        m = re.search(r"\bapex\s*id[:#\s]*([A-Z0-9-]{5,})\b", markdown, re.IGNORECASE)
-        if m:
-            return m.group(1)
+        
+        apex_ids = []
+        
+        # Specific pattern mentioned by stakeholders - find ALL occurrences
+        # Pattern for IDs starting with 25USOA
+        specific_matches = re.findall(r"\b(?:apex\s*id[:#\s]*)?(25USOA[0-9A-Z-]+)\b", markdown, re.IGNORECASE)
+        apex_ids.extend(specific_matches)
+        
+        # If no specific IDs found, try generic pattern
+        if not apex_ids:
+            # Generic fallback near 'Apex ID' label - find ALL occurrences
+            generic_matches = re.findall(r"\bapex\s*id[:#\s]*([A-Z0-9-]{5,})\b", markdown, re.IGNORECASE)
+            apex_ids.extend(generic_matches)
+        
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_ids = []
+        for id_val in apex_ids:
+            if id_val not in seen:
+                seen.add(id_val)
+                unique_ids.append(id_val)
+        
+        if unique_ids:
+            logger.info(f"Found {len(unique_ids)} Apex IDs: {unique_ids}")
+            return unique_ids
         return None
